@@ -1,0 +1,4 @@
+library("reticulate")
+use_condaenv("D:/Anaconda3")
+source_python("D:/Software/PythonWork/GAMA_python/PPO_Navigation_Model/GAMA_R/GAMA_clear.py")
+#result <-main()
