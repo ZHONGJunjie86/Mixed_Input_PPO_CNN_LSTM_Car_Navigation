@@ -47,8 +47,8 @@ The network's output are accelerations which are constricted between [-6,6]m/s^2
 * r terminal： -0.013(target_speed > real_speed) or  -0.1(target_speed < real_speed)：crash / time expires 
                  0.005:non-terminal state  
 * r speed： related to the target speed  
-* if sa ≤st: 0.05 - 0.036*(target_speed / real_speed) 
-* if sa > st: 0.05 - 0.033*(real_speed / target_speed ) 
+* if sa ≤st: 0.001 - 0.036*(target_speed / real_speed) 
+* if sa > st: 0.001 - 0.033*(real_speed / target_speed ) 
 
 　In my experiment it's obviously I desire the agent to learn controling its speed around the target-speed.   
 # PPO2
