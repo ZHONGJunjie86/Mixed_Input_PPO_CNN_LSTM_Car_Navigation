@@ -36,7 +36,7 @@ These conditions will be detected clear in the gaml file.
 # Station representation
 [real_speed/10, target_speed/10, elapsed_time_ratio, distance_to_goal/100,distance_front_car/10,distance_behind_car/10]  
 # Action representation
-The network's output are accelerations which are constricted between [-5,8]m/s^2 to be closer to the real situations.
+The network's output are accelerations which are constricted between [-6,6]m/s^2 to be closer to the real situations.
 # Reward shaping
 　Output accelerate.
 　Action representation [acceleration].
@@ -44,7 +44,7 @@ The network's output are accelerations which are constricted between [-5,8]m/s^2
 　The car will learn to control its accelerate with the restructions shown below:  
 　Reward shaping:  
 * rt = r terminal + r danger + r speed  
-* r terminal： -0.013(target_speed > real_speed) or  -0.01(target_speed < real_speed)：crash / time expires 
+* r terminal： -0.013(target_speed > real_speed) or  -0.1(target_speed < real_speed)：crash / time expires 
                  0.005:non-terminal state  
 * r speed： related to the target speed  
 * if sa ≤st: 0.05 - 0.036*(target_speed / real_speed) 
