@@ -5,6 +5,8 @@ A car-agent navigates in complex traffic conditions by Mixed_Input_PPO_CNN_LSTM 
 ![image](https://github.com/ZHONGJunjie86/PPO_LSTM_Car_Navigation/blob/master/result/old/ppo-mixed.gif)
 # Mixed input architecture
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/architecture3.png)
+# Markov Games
+In this work, I consider a agent extension of Markov decision processes(MDPs) called partially observable Markov games.
 # Traffic conditions && Collision Detection
 When a car-agent navigates on the road, it may encounter with other cars.   
 In some conditions, the acceleration chosen by car-agent will cause jam or collision.  
