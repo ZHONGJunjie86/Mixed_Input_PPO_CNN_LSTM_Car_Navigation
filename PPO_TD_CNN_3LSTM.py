@@ -234,26 +234,26 @@ def main():
     
     ############## Hyperparameters ##############
     update_timestep = 1     #TD use == 1 # update policy every n timesteps  set for TD
-    K_epochs = 3           # update policy for K epochs  lr太大会出现NAN?
+    K_epochs = 4           # update policy for K epochs  lr太大会出现NAN?
     eps_clip = 0.2            
     gamma = 0.9           
     
-    episode =724# node 12 only?
+    episode =0
 
-    lr_first = 0.00012      #
-    lr = lr_first   #random_seed = None
+    sample_lr = [
+        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.000004, 0.000003, 0.000002, 0.000001
+    ]
+    lr = 0.0001   #random_seed = None
     state_dim = 6
     action_dim = 1 
     #(self, state_dim, action_dim, lr, betas, gamma, K_epochs, eps_clip)
-    actor_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_actor.pkl'
-    critic_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_critic.pkl'
+    actor_path = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_actor.pkl'
+    critic_path = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_critic.pkl'
     ################ load ###################
-    if episode >70  : #50 100
-        lr = lr_first * (0.8 ** ((episode-60) // 10))
-        #if episode >200  : #50 100
-         #   lr = lr_first * (0.8 ** ((episode-100) // 10))
-        #if episode >300  : #50 100
-         #   lr = lr_first * (0.7 ** ((episode-200) // 10))
+    if episode >50  : #50 100
+        lr = sample_lr[int(episode// 50)]
 
     ppo =  PPO(state_dim, action_dim, lr, gamma, K_epochs, eps_clip)
     if os.path.exists(actor_path):
@@ -265,9 +265,9 @@ def main():
     print("Waiting for GAMA...")
 
     ################### initialization ########################
-    save_curve_pic = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/result/PPO_3LSTM_loss_curve.png'
-    save_critic_loss = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_critic_loss.csv'
-    save_reward = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_reward.csv'
+    save_curve_pic = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/result/PPO_3LSTM_loss_curve.png'
+    save_critic_loss = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3lstm_critic_loss.csv'
+    save_reward = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3lstm_reward.csv'
     reset()
     memory = Memory()
 
@@ -344,12 +344,8 @@ def main():
             cross_loss_curve(loss_sum.squeeze(0),total_reward,save_curve_pic,save_critic_loss,save_reward)
             rewards = []
             loss = []
-            if episode >70  : #50 100
-                lr = lr_first * (0.8 ** ((episode-60) // 10))
-                #if episode >200  : #50 100
-                 #   lr = lr_first * (0.8 ** ((episode-100) // 10))
-                #if episode >300  : #50 100
-                 #   lr = lr_first * (0.7 ** ((episode-200) // 10))
+            if episode >50  : #50 100
+                lr = sample_lr[int(episode// 50)]
             torch.save(ppo.actor.state_dict(),actor_path)
             torch.save(ppo.critic.state_dict(),critic_path)
 

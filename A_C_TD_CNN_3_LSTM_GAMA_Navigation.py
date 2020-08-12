@@ -15,9 +15,9 @@ warnings.filterwarnings("ignore")
 
 device = torch.device("cuda" if torch.cuda.is_available() else"cpu")  #(
 
-save_curve_pic = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/result/Actor_Critic_3loss_curve.png'
-save_critic_loss = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/training_data/AC_critic_3loss.csv'
-save_reward = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/training_data/AC_3reward.csv'
+save_curve_pic = os.path.abspath(os.curdir)+'/GAMA_python/PPO_Mixedinput_Navigation_Model/result/Actor_Critic_3loss_curve.png'
+save_critic_loss = os.path.abspath(os.curdir)+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/AC_critic_3loss.csv'
+save_reward = os.path.abspath(os.curdir)+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/AC_3reward.csv'
 state_size = 6 
 action_size = 1 
 torch.set_default_tensor_type(torch.DoubleTensor)
@@ -51,14 +51,16 @@ class Actor(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
         self.linear_CNN = nn.Linear(13456, 256)
+        self.lstm_CNN = nn.LSTM(768,256)
         #
         self.state_size = state_size
         self.action_size = action_size
-        self.linear1 = nn.Linear(self.state_size, 32)
-        self.linear2 = nn.Linear(32, 32)
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        self.lstm3 = nn.LSTM(128,85)
         
-        self.LSTM_layer_3 = nn.LSTM(800,64,1, batch_first=True) #864
-        self.linear4 = nn.Linear(64,32)
+        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True) #864
+        self.linear4 = nn.Linear(128,32)
         self.mu = nn.Linear(32,self.action_size)  #256 linear2
         self.sigma = nn.Linear(32,self.action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
@@ -70,9 +72,14 @@ class Actor(nn.Module):
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1) #展開
         x = F.relu(self.linear_CNN(x)).reshape(1,768)
+        x,_ = self.lstm_CNN(x.unsqueeze(0))
+        x = F.relu( x).reshape(1,256)  #torch.tanh
         # num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,32) #96
+        output_2 = F.relu(self.linear2(output_1))
+        output_2,_ = self.lstm3(output_2)
+        output_2 = F.relu(output_2)  #
+        output_2 = output_2.squeeze().reshape(1,255)
         # LSTM
         output_2 = torch.cat((x,output_2),1) 
         output_2  = output_2.unsqueeze(0)
@@ -99,13 +106,16 @@ class Critic(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
         self.linear_CNN = nn.Linear(13456, 256)
+        self.lstm_CNN = nn.LSTM(768,256)
         #
         self.state_size = state_size
         self.action_size = action_size
-        self.linear1 = nn.Linear(self.state_size, 32)
-        self.linear2 = nn.Linear(32, 32)
-        self.LSTM_layer_3 = nn.LSTM(800,64,1, batch_first=True)  #864
-        self.linear4 = nn.Linear(64,32) #
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        self.lstm3 = nn.LSTM(128,85)
+        #
+        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)  #864
+        self.linear4 = nn.Linear(128,32) #
         self.linear5 = nn.Linear(32, action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
                             torch.zeros(1,1,64).to(device))
@@ -116,9 +126,103 @@ class Critic(nn.Module):
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1)
         x = F.relu(self.linear_CNN(x)).reshape(1,768)
+        x,_ = self.lstm_CNN(x.unsqueeze(0))
+        x = F.relu(x).reshape(1,256)
         #num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,32)
+        output_2 = F.relu(self.linear2(output_1))#.reshape(1,32)
+        output_2,_ = self.lstm3(output_2)
+        output_2 = F.relu(output_2)
+        output_2 = output_2.squeeze().reshape(1,255)
+        #LSTM
+        output_2 = torch.cat((x,output_2),1)
+        output_2  = output_2.unsqueeze(0)
+        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) 
+        a,b,c = output_3.shape
+        #
+        output_4 = F.relu(self.linear4(output_3.view(-1,c))) 
+        value  = torch.tanh(self.linear5(output_4))
+        return value #,output
+"""class Actor(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(Actor, self).__init__()
+        self.conv1 = nn.Conv2d(3,8, kernel_size=8, stride=4, padding=0) # 500*500*3 -> 124*124*8
+        self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
+        self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
+        self.linear_CNN_1 = nn.Linear(13456, 256)
+        self.linear_CNN_2 = nn.Linear(768,256)
+        #
+        self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        
+        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
+        self.linear4 = nn.Linear(64,32)
+        self.mu = nn.Linear(32,self.action_size)  #256 linear2
+        self.sigma = nn.Linear(32,self.action_size)
+        self.hidden_cell = (torch.zeros(1,1,64).to(device),
+                            torch.zeros(1,1,64).to(device))
+
+    def forward(self, state,tensor_cv):
+        # CV
+        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = x.view(x.size(0), -1) #展開
+        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
+        x = F.relu(self.linear_CNN_2(x))
+        # num
+        output_1 = F.relu(self.linear1(state))
+        output_2 = F.relu(self.linear2(output_1)).reshape(1,128) 
+        # LSTM
+        output_2 = torch.cat((x,output_2),1) 
+        output_2  = output_2.unsqueeze(0)
+        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
+        a,b,c = output_3.shape
+        #
+        output_4 = F.relu(self.linear4(output_3.view(-1,c))) #
+        mu =  torch.tanh(self.mu(output_4))   #有正有负 sigmoid 0-1
+        sigma = F.relu(self.sigma(output_4)) + 0.001 
+        mu = torch.diag_embed(mu).to(device)
+        sigma = torch.diag_embed(sigma).to(device)  # change to 2D
+        dist = MultivariateNormal(mu,sigma)  #N(μ，σ^2)
+        entropy = dist.entropy().mean()
+        action = dist.sample()
+        action_logprob = dist.log_prob(action)     
+        action = torch.clamp(action.detach(), -0.6, 0.6)
+        return action,action_logprob,entropy
+
+class Critic(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(Critic, self).__init__()
+        self.conv1 = nn.Conv2d(3,8, kernel_size=8, stride=4, padding=0) # 500*500*3 -> 124*124*8
+        self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
+        self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
+        self.linear_CNN_1 = nn.Linear(13456, 256)
+        self.linear_CNN_2 = nn.Linear(768,256)
+        #
+        self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)  #864
+        self.linear4 = nn.Linear(64,32) #
+        self.linear5 = nn.Linear(32, action_size)
+        self.hidden_cell = (torch.zeros(1,1,64).to(device),
+                            torch.zeros(1,1,64).to(device))
+
+    def forward(self, state, tensor_cv):
+        #CV
+        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
+        x = F.relu(self.linear_CNN_2(x))
+        #num
+        output_1 = F.relu(self.linear1(state))
+        output_2 = F.relu(self.linear2(output_1)).reshape(1,128)
         #LSTM
         output_2 = torch.cat((x,output_2),1)
         output_2  = output_2.unsqueeze(0)
@@ -128,11 +232,11 @@ class Critic(nn.Module):
         output_4 = F.relu(self.linear4(output_3.view(-1,c))) 
         value  = torch.tanh(self.linear5(output_4))
         return value #,output
-
+"""
 def main():
     ################ load ###################
-    actor_path = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/weight/AC_TD3_actor.pkl'
-    critic_path = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/weight/AC_TD3_critic.pkl'
+    actor_path = os.path.abspath(os.curdir)+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/AC_TD3_actor.pkl'
+    critic_path = os.path.abspath(os.curdir)+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/AC_TD3_critic.pkl'
     if os.path.exists(actor_path):
         actor =  Actor(state_size, action_size).to(device)
         actor.load_state_dict(torch.load(actor_path))
@@ -151,13 +255,16 @@ def main():
     ################### initialization ########################
     reset()
 
-    episode = 0
+    episode = 496
 
-    lr = 0.001
-    if episode > 200 :
-        #lr = 0.00008
-        new_lr = lr * (0.7 ** ((episode-40) // 10))
-
+    lr = 0.0001
+    sample_lr = [
+        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.000004, 0.000003, 0.000002, 0.000001
+    ]
+    if episode >50  : #50 100
+        lr = sample_lr[int(episode// 50)]
     optimizerA = optim.Adam(actor.parameters(), lr, betas=(0.95, 0.999))
     optimizerC = optim.Adam(critic.parameters(), lr, betas=(0.95, 0.999))
 
@@ -203,7 +310,7 @@ def main():
             
             state_next = torch.stack(memory.states_next).to(device).detach()
             tensor_cv_next = torch.stack(memory.states_img_next).to(device).detach()  
-            value_next = critic_next(state,tensor_cv_next)  #_next
+            value_next = critic_next(state_next,tensor_cv_next)  #_next !!!
             with torch.autograd.set_detect_anomaly(True):
                 # TD:r(s) +  gama*v(s+1) - v(s)
                 advantage = reward.detach() + gama*value_next.detach() - value 
@@ -222,7 +329,7 @@ def main():
             del  memory.states_img[:1]
             memory.states.append(state)
             memory.states_img.append(tensor_cv)
-            #state = torch.stack(memory.states).to(device).detach()
+            state = torch.stack(memory.states).to(device).detach()  #
             tensor_cv = torch.stack(memory.states_img).to(device).detach()
             value =  critic(state,tensor_cv)  
             action,log_prob,entropy = actor(state,tensor_cv) 
@@ -277,19 +384,18 @@ def main():
             cross_loss_curve(loss_sum.squeeze(0),total_reward,save_curve_pic,save_critic_loss,save_reward) #total_loss,total_rewards
             loss = []
             memory.clear_memory()
-            if episode > 200 :
-                #lr = 0.00008
-                new_lr = lr * (0.7** ((episode-40) // 10))
+            if episode >50  : #50 100
+                lr = sample_lr[int(episode// 50)]
 
-                optimizerA = optim.Adam(actor.parameters(), new_lr, betas=(0.95, 0.999))
-                optimizerC = optim.Adam(critic.parameters(), new_lr, betas=(0.95, 0.999))
+                optimizerA = optim.Adam(actor.parameters(), lr, betas=(0.95, 0.999))
+                optimizerC = optim.Adam(critic.parameters(), lr, betas=(0.95, 0.999))
 
             torch.save(actor.state_dict(),actor_path)
             torch.save(critic.state_dict(),critic_path)
 
         #最初の時
         else:
-            print('Iteration:',episode)
+            print('Iteration:',episode,"lr:",lr)
             state = np.reshape(state,(1,len(state))) #xxx
             state_img = generate_img() 
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device)
@@ -298,7 +404,7 @@ def main():
             for _ in range(3):
                 memory.states.append(state)
                 memory.states_img.append(tensor_cv)
-            #state = torch.stack(memory.states).to(device).detach()
+            state = torch.stack(memory.states).to(device).detach()
             tensor_cv = torch.stack(memory.states_img).to(device).detach()
             value =  critic(state,tensor_cv)  #dist,  # now is a tensoraction = dist.sample() 
             action,log_prob,entropy = actor(state,tensor_cv)

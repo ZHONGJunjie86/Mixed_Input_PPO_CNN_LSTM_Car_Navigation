@@ -8,12 +8,9 @@ import torch.nn.functional as F
 from torch.distributions import MultivariateNormal
 import numpy as np
 import pandas as pd
-import warnings
 
-warnings.filterwarnings("ignore")
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 torch.set_default_tensor_type(torch.DoubleTensor)
-
 class Memory:
     def __init__(self):
         self.actions = []
@@ -42,16 +39,14 @@ class Actor(nn.Module):
         self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
-        self.linear_CNN_1 = nn.Linear(13456, 256)
-        self.linear_CNN_2 = nn.Linear(768,256)
-        
+        self.linear_CNN = nn.Linear(13456, 256)
         #
         self.state_size = state_size
         self.action_size = action_size
-        self.linear1 = nn.Linear(self.state_size, 128)
-        self.linear2 = nn.Linear(128, 128)
+        self.linear1 = nn.Linear(self.state_size, 32)
+        self.linear2 = nn.Linear(32, 32)
         
-        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
+        self.LSTM_layer_3 = nn.LSTM(288,64,1, batch_first=True)
         self.linear4 = nn.Linear(64,32)
         self.mu = nn.Linear(32,self.action_size)  #256 linear2
         self.sigma = nn.Linear(32,self.action_size)
@@ -60,17 +55,16 @@ class Actor(nn.Module):
 
     def forward(self, state,tensor_cv):
         # CV
-        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp1(self.conv1(tensor_cv.unsqueeze(0))))
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1) #展開
-        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
-        x = F.relu(self.linear_CNN_2(x))
+        x = F.relu(self.linear_CNN(x))
         # num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,128)
+        output_2 = F.relu(self.linear2(output_1))
         # LSTM
         output_2 = torch.cat((x,output_2),1) 
-        output_2  = output_2.unsqueeze(0)
+        #output_2  = output_2.unsqueeze(0)
         output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
         a,b,c = output_3.shape
         #
@@ -92,14 +86,13 @@ class Critic(nn.Module):
         self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
-        self.linear_CNN_1 = nn.Linear(13456, 256)
-        self.linear_CNN_2 = nn.Linear(768,256)
+        self.linear_CNN = nn.Linear(13456, 256)
         #
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 32)
         self.linear2 = nn.Linear(32, 32)
-        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
+        self.LSTM_layer_3 = nn.LSTM(288,64,1, batch_first=True)
         self.linear4 = nn.Linear(64,32) #
         self.linear5 = nn.Linear(32, action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
@@ -107,17 +100,16 @@ class Critic(nn.Module):
 
     def forward(self, state, tensor_cv):
         #CV
-        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp1(self.conv1(tensor_cv.unsqueeze(0))))
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1)
-        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
-        x = F.relu(self.linear_CNN_2(x))
+        x = F.relu(self.linear_CNN(x))
         #num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,128)
+        output_2 = F.relu(self.linear2(output_1))
         #LSTM
         output_2 = torch.cat((x,output_2),1)
-        output_2  = output_2.unsqueeze(0)
+        #output_2  = output_2.unsqueeze(0)
         output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
         a,b,c = output_3.shape
         #
@@ -144,7 +136,7 @@ class PPO:
         self.MseLoss = nn.MSELoss()
     
     def select_action(self, state, tensor_cv,memory):
-        if  len(memory.states)==0:
+        if len(memory) ==0:  #用于判断对象是否包含对应的属性
             for _ in range(3):
                 memory.states.append(state)
                 memory.states_img.append(tensor_cv)
@@ -153,13 +145,13 @@ class PPO:
             del memory.states_img[:1]
             memory.states.append(state)
             memory.states_img.append(tensor_cv)
-        state = torch.stack(memory.states,0)
-        tensor_cv = torch.stack(memory.states_img,0)
+        memory.states.append(state)
+        memory.states_img.append(tensor_cv)
         action,action_logprob,entropy = self.actor(state,tensor_cv)
         memory.actions.append(action)
         memory.logprobs.append(action_logprob)
         action.detach()
-        action = torch.clamp(action, -0.6, 0.6) #limit
+        action = torch.clamp(action, -0.5, 0.8) #limit
         return action.cpu().data.numpy().flatten()
     
     def update(self, memory,lr,advantages,done):
@@ -180,25 +172,25 @@ class PPO:
         #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)  #MC use
         
         # convert list to tensor  截断所有旧网络出来的值，旧网络计算只会用到 logP
-        old_states =memory.states[2].to(device).detach()#torch.stack(memory.states).to(device).detach()
+        old_states =torch.stack(memory.states).to(device).detach()
         old_states_img =torch.stack(memory.states_img).to(device).detach()
-        old_states_next = memory.states_next[2].to(device).detach()#torch.stack(memory.states_next).to(device).detach()
+        old_states_next = torch.stack(memory.states_next).to(device).detach()
         old_states_img_next = torch.stack(memory.states_img_next).to(device).detach()  
         old_actions = torch.cat(memory.actions).to(device).detach()
         old_logprobs = torch.cat(memory.logprobs).to(device).detach() 
         
         with torch.autograd.set_detect_anomaly(True):
-            # Evaluating old actions and values :
-            state_values= self.critic(old_states, old_states_img).squeeze()
-            state_next_values= self.critic_next(old_states_next,old_states_img_next) .squeeze()
-            # ratio (ppi_theta/i_theta__old):
-            # Surrogate Loss: # TD:r(s) + v(s+1) - v(s)  # MC = R-V（s）
-            if done == 1:
-                state_next_values = state_next_values*0
-            advantages = rewards.detach() + self.gamma *state_next_values.detach() - state_values   #TD use
-                #advantages = rewards  - state_values  #MC use
-            c_loss = (rewards.detach() + self.gamma *state_next_values.detach() - state_values).pow(2) 
             for _ in range(self.K_epochs):
+                # Evaluating old actions and values :
+                state_values= self.critic(old_states, old_states_img)
+                state_next_values= self.critic_next(old_states_next,old_states_img_next) 
+                # ratio (ppi_theta/i_theta__old):
+                # Surrogate Loss: # TD:r(s) + v(s+1) - v(s)  # MC = R-V（s）
+                if done == 1:
+                    state_next_values = state_next_values*0
+                advantages = rewards.detach() + self.gamma *state_next_values.detach() - state_values   #TD use
+                #advantages = rewards  - state_values  #MC use
+                c_loss = (rewards.detach() + self.gamma *state_next_values.detach() - state_values).pow(2) 
                 
                 action,logprobs,entropy = self.actor(old_states,old_states_img) 
                 ratios = torch.exp(logprobs - old_logprobs.detach() ) #log转正数probability
@@ -206,14 +198,14 @@ class PPO:
                 surr1 = ratios * advantages.detach()
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages.detach()
                 a_loss = -torch.min(surr1, surr2)  #+ 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy #均方损失函数
+                
                 self.A_optimizer.zero_grad()
-                a_loss.backward() 
+                self.C_optimizer.zero_grad()
+                a_loss.backward(retain_graph=True) 
+                c_loss.backward(retain_graph=True)
                 self.A_optimizer.step()
-            
-            self.C_optimizer.zero_grad()
-            c_loss.backward()
-            self.C_optimizer.step()
-            self.critic_next.load_state_dict(self.critic.state_dict())
+                self.C_optimizer.step()
+                self.critic_next.load_state_dict(self.critic.state_dict())
 
         # Copy new weights into old policy: 更新时旧网络计算只会用到 logP,旧图没意义
         return advantages.pow(2) #advantages.sum().abs()/100 # MC use
@@ -222,19 +214,19 @@ def main():
     
     ############## Hyperparameters ##############
     update_timestep = 1     #TD use == 1 # update policy every n timesteps  set for TD
-    K_epochs = 4           # update policy for K epochs  lr太大会出现NAN?
+    K_epochs = 3           # update policy for K epochs  lr太大会出现NAN?
     eps_clip = 0.2            
     gamma = 0.9           
     
-    episode = 421# node 12 only?
+    episode = 495# node 12 only?
 
     lr_first = 0.00012      #
     lr = lr_first   #random_seed = None
     state_dim = 6
     action_dim = 1 
     #(self, state_dim, action_dim, lr, betas, gamma, K_epochs, eps_clip)
-    actor_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_actor.pkl'
-    critic_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_critic.pkl'
+    actor_path = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\weight\\ppo_TD_actor.pkl'
+    critic_path = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\weight\\ppo_TD_critic.pkl'
     ################ load ###################
     if episode >30  : #50 100
         lr = lr_first * (0.7 ** ((episode-20) // 10))
@@ -249,13 +241,13 @@ def main():
     print("Waiting for GAMA...")
 
     ################### initialization ########################
-    save_curve_pic = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/result/PPO_TD3_loss_curve.png'
-    save_critic_loss = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_critic_loss.csv'
-    save_reward = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_reward.csv'
+    save_curve_pic = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\result\\PPO_TD_loss_curve.png'
+    save_critic_loss = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\training_data\\PPO_TD_critic_loss.csv'
+    save_reward = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\training_data\\PPO_TD_reward.csv'
     reset()
     memory = Memory()
 
-    advantages =293 #global value
+    advantages = 0 #global value
     loss = []
     total_loss = []
     rewards = []
@@ -264,6 +256,7 @@ def main():
     state,reward,done,time_pass,over = GAMA_connect(test) #connect
     #[real_speed/10, target_speed/10, elapsed_time_ratio, distance_left/100,distance_front_car/10,distance_behind_car/10,reward,done,over]
     print("done:",done,"timepass:",time_pass)
+
     ##################  start  #########################
     while over!= 1:
         #普通の場合
@@ -272,25 +265,15 @@ def main():
             memory.rewards.append(reward)
             memory.is_terminals.append(done)
             state = torch.DoubleTensor(state).reshape(1,6).to(device) 
+            memory.states_next.append(state)
             state_img = generate_img() 
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device)
-            if  len(memory.states_next) ==0:
-                for _ in range(3):
-                    memory.states_next = memory.states
-                    memory.states_next[2] = state
-                    memory.states_img_next = memory.states_img
-                    memory.states_img_next [2]= tensor_cv
-            else:
-                del memory.states_next[:1]
-                del memory.states_img_next[:1]
-                memory.states.append(state)
-                memory.states_img_next.append(tensor_cv)
-            loss_ = ppo.update(memory,lr,advantages,done)
-            loss.append(loss_)
-            del memory.logprobs[:]
-            del memory.rewards[:]
-            del memory.is_terminals[:]
-            #memory.clear_memory()
+            memory.states_img_next.append(tensor_cv)
+
+            if update_timestep  == 1:  #TD use
+                loss_ = ppo.update(memory,lr,advantages,done)
+                loss.append(loss_)
+                memory.clear_memory()
 
             action = ppo.select_action(state,tensor_cv, memory)
             send_to_GAMA([[1,float(action*10)]])
@@ -302,8 +285,6 @@ def main():
             send_to_GAMA( [[1,0]] ) 
             rewards.append(reward) 
 
-            del memory.states_next[:1]
-            del memory.states_img_next[:1]
             state = torch.DoubleTensor(state).reshape(1,6).to(device) #转化成1行
             memory.states_next.append(state)
             state_img = generate_img() 

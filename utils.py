@@ -24,8 +24,8 @@ def reset():
 def cross_loss_curve(critic_loss,total_rewards,save_curve_pic,save_critic_loss,save_reward):
     critic_loss = np.hstack((np.loadtxt(save_critic_loss, delimiter=","),critic_loss))
     reward = np.hstack((np.loadtxt(save_reward, delimiter=",") ,total_rewards))
-    plt.plot(np.array(critic_loss), c='b', label='critic_loss')
-    plt.plot(np.array(reward), c='r', label='total_rewards')
+    plt.plot(np.array(critic_loss), c='b', label='critic_loss',linewidth=0.5)
+    plt.plot(np.array(reward), c='r', label='total_rewards',linewidth=0.5)
     plt.legend(loc='best')
     #plt.ylim(-15,15)
     plt.ylim(-0.25,0.1)

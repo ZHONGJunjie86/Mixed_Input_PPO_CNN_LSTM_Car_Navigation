@@ -49,10 +49,11 @@ class Actor(nn.Module):
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 128)
-        self.linear2 = nn.Linear(128, 128)
+        self.linear2 = nn.Linear(128, 85)
         
-        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
-        self.linear4 = nn.Linear(64,32)
+        #self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
+        self.linear3 = nn.Linear(511,128)
+        self.linear4 = nn.Linear(128,32)
         self.mu = nn.Linear(32,self.action_size)  #256 linear2
         self.sigma = nn.Linear(32,self.action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
@@ -64,17 +65,18 @@ class Actor(nn.Module):
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1) #展開
         x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
-        x = F.relu(self.linear_CNN_2(x))
+        x = F.relu(self.linear_CNN_2(x)).reshape(1,256)
         # num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,128)
+        output_2 = F.relu(self.linear2(output_1)).reshape(1,255)
         # LSTM
         output_2 = torch.cat((x,output_2),1) 
-        output_2  = output_2.unsqueeze(0)
+        """output_2  = output_2.unsqueeze(0)
         output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
-        a,b,c = output_3.shape
+        a,b,c = output_3.shape"""
+        output_3 = F.relu(self.linear3(output_2) )
         #
-        output_4 = F.relu(self.linear4(output_3.view(-1,c))) #
+        output_4 =F.relu(self.linear4(output_3)) #F.relu(self.linear4(output_3.view(-1,c))) #
         mu = torch.tanh(self.mu(output_4))   #有正有负 sigmoid 0-1
         sigma = F.relu(self.sigma(output_4)) + 0.001 
         mu = torch.diag_embed(mu).to(device)
@@ -92,15 +94,17 @@ class Critic(nn.Module):
         self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
-        self.linear_CNN_1 = nn.Linear(13456, 256)
-        self.linear_CNN_2 = nn.Linear(768,256)
+        self.linear_CNN = nn.Linear(13456, 256)
+        self.lstm_CNN = nn.LSTM(768,256)
         #
         self.state_size = state_size
         self.action_size = action_size
-        self.linear1 = nn.Linear(self.state_size, 32)
-        self.linear2 = nn.Linear(32, 32)
-        self.LSTM_layer_3 = nn.LSTM(384,64,1, batch_first=True)
-        self.linear4 = nn.Linear(64,32) #
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        self.lstm3 = nn.LSTM(128,85)
+        #
+        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)  #864
+        self.linear4 = nn.Linear(128,32) #
         self.linear5 = nn.Linear(32, action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
                             torch.zeros(1,1,64).to(device))
@@ -110,15 +114,19 @@ class Critic(nn.Module):
         x = F.relu(self.maxp1(self.conv1(tensor_cv)))
         x = F.relu(self.maxp2(self.conv2(x)))
         x = x.view(x.size(0), -1)
-        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
-        x = F.relu(self.linear_CNN_2(x))
+        x = F.relu(self.linear_CNN(x)).reshape(1,768)
+        x,_ = self.lstm_CNN(x.unsqueeze(0))
+        x = F.relu(x).reshape(1,256)
         #num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1)).reshape(1,128)
+        output_2 = F.relu(self.linear2(output_1))#.reshape(1,32)
+        output_2,_ = self.lstm3(output_2)
+        output_2 = F.relu(output_2)
+        output_2 = output_2.squeeze().reshape(1,255)
         #LSTM
         output_2 = torch.cat((x,output_2),1)
         output_2  = output_2.unsqueeze(0)
-        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
+        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) 
         a,b,c = output_3.shape
         #
         output_4 = F.relu(self.linear4(output_3.view(-1,c))) 
@@ -153,7 +161,7 @@ class PPO:
             del memory.states_img[:1]
             memory.states.append(state)
             memory.states_img.append(tensor_cv)
-        state = torch.stack(memory.states,0)
+        state = torch.stack(memory.states,0)       #!!!
         tensor_cv = torch.stack(memory.states_img,0)
         action,action_logprob,entropy = self.actor(state,tensor_cv)
         memory.actions.append(action)
@@ -180,9 +188,9 @@ class PPO:
         #rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)  #MC use
         
         # convert list to tensor  截断所有旧网络出来的值，旧网络计算只会用到 logP
-        old_states =memory.states[2].to(device).detach()#torch.stack(memory.states).to(device).detach()
+        old_states =torch.stack(memory.states).to(device).detach()#torch.stack(memory.states).to(device).detach()
         old_states_img =torch.stack(memory.states_img).to(device).detach()
-        old_states_next = memory.states_next[2].to(device).detach()#torch.stack(memory.states_next).to(device).detach()
+        old_states_next = torch.stack(memory.states_next).to(device).detach()#torch.stack(memory.states_next).to(device).detach()
         old_states_img_next = torch.stack(memory.states_img_next).to(device).detach()  
         old_actions = torch.cat(memory.actions).to(device).detach()
         old_logprobs = torch.cat(memory.logprobs).to(device).detach() 
@@ -226,18 +234,22 @@ def main():
     eps_clip = 0.2            
     gamma = 0.9           
     
-    episode = 421# node 12 only?
+    episode =896# node 12 only?
 
-    lr_first = 0.00012      #
-    lr = lr_first   #random_seed = None
+    sample_lr = [
+        0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
+        0.00002, 0.00001, 0.000009, 0.000008, 0.000007, 0.000006, 0.000005,
+        0.000004, 0.000003, 0.000002, 0.000001
+    ]
+    lr = 0.0001   #random_seed = None
     state_dim = 6
     action_dim = 1 
     #(self, state_dim, action_dim, lr, betas, gamma, K_epochs, eps_clip)
-    actor_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_actor.pkl'
-    critic_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3_critic.pkl'
+    actor_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD0_actor.pkl'
+    critic_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD0_critic.pkl'
     ################ load ###################
-    if episode >30  : #50 100
-        lr = lr_first * (0.7 ** ((episode-20) // 10))
+    if episode >50  : #50 100
+        lr = sample_lr[int(episode //50)]
 
     ppo =  PPO(state_dim, action_dim, lr, gamma, K_epochs, eps_clip)
     if os.path.exists(actor_path):
@@ -249,13 +261,13 @@ def main():
     print("Waiting for GAMA...")
 
     ################### initialization ########################
-    save_curve_pic = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/result/PPO_TD3_loss_curve.png'
-    save_critic_loss = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_critic_loss.csv'
-    save_reward = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_reward.csv'
+    save_curve_pic = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/result/PPO_TD0_loss_curve.png'
+    save_critic_loss = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD0_critic_loss.csv'
+    save_reward = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD0_reward.csv'
     reset()
     memory = Memory()
 
-    advantages =293 #global value
+    advantages =0 #global value
     loss = []
     total_loss = []
     rewards = []
@@ -326,14 +338,14 @@ def main():
             cross_loss_curve(loss_sum.squeeze(0),total_reward,save_curve_pic,save_critic_loss,save_reward)
             rewards = []
             loss = []
-            if episode >30  : #50 100
-                lr = lr_first * (0.7 ** ((episode-20) // 10))
+            if episode >50  : #50 100
+                lr = sample_lr[int(episode //50)]
             torch.save(ppo.actor.state_dict(),actor_path)
             torch.save(ppo.critic.state_dict(),critic_path)
 
         #最初の時
         else:
-            print('Iteration:',episode)
+            print('Iteration:',episode,"lr:", lr )
             state = torch.DoubleTensor(state).reshape(1,6).to(device) 
             state_img = generate_img() # numpy image: H x W x C (500, 500, 3) -> (3,500,500)
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device) # np.transpose( xxx,  (2, 0, 1)) torch image: C x H x W
@@ -347,3 +359,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+"""class Critic(nn.Module):

@@ -63,6 +63,7 @@ class Actor(nn.Module):
         output_1 = F.relu(self.linear1(state))
         output_2 = F.relu(self.linear2(output_1))
         # LSTM
+        print("x.size(),output_2.size()",x.size(),output_2.size())
         output_2 = torch.cat((x,output_2),1) 
         output_2  = output_2.unsqueeze(0)
         output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
@@ -200,16 +201,16 @@ class PPO:
         return advantages.pow(2) #advantages.sum().abs()/100 # MC use
 
 def main():
-
+    
     ############## Hyperparameters ##############
     update_timestep = 1     #TD use == 1 # update policy every n timesteps  set for TD
     K_epochs = 3           # update policy for K epochs  lr太大会出现NAN?
     eps_clip = 0.2            
     gamma = 0.9           
     
-    episode = 132 # node 12 only
+    episode = 495# node 12 only?
 
-    lr_first = 0.0001                
+    lr_first = 0.00012      #
     lr = lr_first   #random_seed = None
     state_dim = 6
     action_dim = 1 
@@ -317,3 +318,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+ 
