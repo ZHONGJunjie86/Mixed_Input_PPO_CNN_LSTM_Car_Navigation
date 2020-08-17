@@ -43,38 +43,37 @@ class Actor(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
         self.linear_CNN = nn.Linear(13456, 256)   # *3
-        self.lstm_CNN = nn.LSTM(768,256)
+        self.lstm_CNN = nn.LSTM(256,85,batch_first=True)
         
         #
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 128)
         self.linear2 = nn.Linear(128,128)
-        self.lstm3 = nn.LSTM(128,85)
+        self.lstm3 = nn.LSTM(128,85,batch_first=True)
         
         #self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
-        self.linear3 = nn.Linear(511,128)
+        self.linear3 = nn.Linear(510,128)
         self.linear4 = nn.Linear(128,32)
         self.mu = nn.Linear(32,self.action_size)  #256 linear2
         self.sigma = nn.Linear(32,self.action_size)
-        self.hidden_cell = (torch.zeros(1,1,64).to(device),
-                            torch.zeros(1,1,64).to(device))
 
-    def forward(self, state,tensor_cv):
+    def forward(self, state,tensor_cv,h_state_cv_a=(torch.zeros(1,1,85).to(device),
+                            torch.zeros(1,1,85).to(device)),h_state_n_a=(torch.zeros(1,3,85).to(device),
+                            torch.zeros(1,3,85).to(device))):
         # CV
         x = F.relu(self.maxp1(self.conv1(tensor_cv)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = x.view(x.size(0), -1) #展開
-        x = F.relu(self.linear_CNN(x)).reshape(1,768)
-        x,_ = self.lstm_CNN(x.unsqueeze(0))
-        x = F.relu( x).reshape(1,256)  #torch.tanh
+        x = F.relu(self.maxp2(self.conv2(x)))#.reshape(3,1,13456)
+        x = x.view(x.size(0), -1) #[3, 16, 29, 29]
+        x = F.relu(self.linear_CNN(x))#.reshape(3,1,256)
+        x,h_state_cv = self.lstm_CNN(x.unsqueeze(0),h_state_cv_a)    #.unsqueeze(0)
+        x = F.relu( x).reshape(1,255)  #torch.tanh
         
         # num
         output_1 = F.relu(self.linear1(state))
         output_2 = F.relu(self.linear2(output_1))
-        output_2,_ = self.lstm3(output_2)
-        output_2 = F.relu(output_2)  #
-        output_2 = output_2.squeeze().reshape(1,255)
+        output_2,h_state_n_a = self.lstm3(output_2,h_state_n_a)
+        output_2 = F.relu(output_2) .squeeze().reshape(1,255) 
         # LSTM
         output_2 = torch.cat((x,output_2),1) 
         """output_2  = output_2.unsqueeze(0)
@@ -91,7 +90,7 @@ class Actor(nn.Module):
         entropy = dist.entropy().mean()
         action = dist.sample()
         action_logprob = dist.log_prob(action)     
-        return action,action_logprob,entropy
+        return action,action_logprob,entropy,(h_state_cv_a[0].data,h_state_cv_a[1].data),(h_state_n_a[0].data,h_state_n_a[1].data)
 
 class Critic(nn.Module):
     def __init__(self, state_size, action_size):
@@ -101,35 +100,36 @@ class Critic(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
         self.linear_CNN = nn.Linear(13456, 256)
-        self.lstm_CNN = nn.LSTM(768,256)
+        self.lstm_CNN = nn.LSTM(256,85,batch_first=True)
         #
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 128)
         self.linear2 = nn.Linear(128, 128)
-        self.lstm3 = nn.LSTM(128,85)
+        self.lstm3 = nn.LSTM(128,85,batch_first=True)
         #
         #self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
-        self.linear3 = nn.Linear(511,128)
+        self.linear3 = nn.Linear(510,128)
         self.linear4 = nn.Linear(128,32) #
         self.linear5 = nn.Linear(32, action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
                             torch.zeros(1,1,64).to(device))
 
-    def forward(self, state, tensor_cv):
+    def forward(self, state, tensor_cv,h_state_cv_c=(torch.zeros(1,3,85).to(device),
+                            torch.zeros(1,3,85).to(device)),h_state_n_c=(torch.zeros(1,3,85).to(device),
+                            torch.zeros(1,3,85).to(device))):
         #CV
         x = F.relu(self.maxp1(self.conv1(tensor_cv)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.linear_CNN(x)).reshape(1,768)
-        x,_ = self.lstm_CNN(x.unsqueeze(0))
-        x = F.relu( x).reshape(1,256)
+        x = F.relu(self.maxp2(self.conv2(x))).reshape(3,1,13456)
+        #x = x.view(x.size(0), -1) #[3, 16, 29, 29]
+        x = F.relu(self.linear_CNN(x)) #[3,1,256]?
+        x,h_state_cv_c= self.lstm_CNN(x,h_state_cv_c) #.unsqueeze(0)
+        x = F.relu( x).reshape(1,255)
         #num
         output_1 = F.relu(self.linear1(state))
         output_2 = F.relu(self.linear2(output_1))
-        output_2,_ = self.lstm3(output_2)
-        output_2 = F.relu(output_2)
-        output_2 = output_2.squeeze().reshape(1,255)
+        output_2,h_state_n_c = self.lstm3(output_2,h_state_n_c)
+        output_2 = F.relu(output_2).squeeze().reshape(1,255)
         #LSTM
         output_2 = torch.cat((x,output_2),1)
         """output_2  = output_2.unsqueeze(0)
@@ -139,7 +139,7 @@ class Critic(nn.Module):
         #
         output_4 = F.relu(self.linear4(output_3))#.view(-1,c))) 
         value  = torch.tanh(self.linear5(output_4))
-        return value #,output
+        return value,(h_state_cv_c[0].data,h_state_cv_c[1].data),(h_state_n_c[0].data,h_state_n_c[1].data)
 
 class PPO:
     def __init__(self, state_dim, action_dim, lr,gamma, K_epochs, eps_clip):
@@ -149,6 +149,7 @@ class PPO:
         self.K_epochs = K_epochs
         self.memory_size = 3
         self.memory_counter = 0
+        self.reset =0
         
         
         self.actor = Actor(state_dim, action_dim).to(device)
@@ -158,8 +159,12 @@ class PPO:
         self.A_optimizer = torch.optim.Adam(self.actor.parameters(), lr=lr, betas=(0.95, 0.999)) #更新新网
         self.C_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr, betas=(0.95, 0.999)) #更新新网
 
-        self.MseLoss = nn.MSELoss()
-    
+        self.h_state_cv_c=(torch.zeros(1,1,85).to(device),torch.zeros(1,1,85).to(device))
+        self.h_state_cv_a =self.h_state_cv_c
+        self.h_state_n_c = (torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+        self.h_state_n_a = self.h_state_n_c
+        
+
     def select_action(self, state, tensor_cv,memory):
         if  len(memory.states)==0:
             for _ in range(3):
@@ -172,7 +177,7 @@ class PPO:
             memory.states_img.append(tensor_cv)
         state = torch.stack(memory.states,0)
         tensor_cv = torch.stack(memory.states_img,0)
-        action,action_logprob,entropy = self.actor(state,tensor_cv)
+        action,action_logprob,entropy, self.h_state_cv_a,self.h_state_n_a= self.actor(state,tensor_cv)
         memory.actions.append(action)
         memory.logprobs.append(action_logprob)
         action.detach()
@@ -189,6 +194,7 @@ class PPO:
         for reward, is_terminal in zip(reversed(memory.rewards), reversed(memory.is_terminals)):
             if is_terminal == 1:
                 discounted_reward = 0
+                self.reset = 1
             discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
         
@@ -206,8 +212,8 @@ class PPO:
         
         with torch.autograd.set_detect_anomaly(True):
             # Evaluating old actions and values :
-            state_values= self.critic(old_states, old_states_img).squeeze()
-            state_next_values= self.critic_next(old_states_next,old_states_img_next) .squeeze()
+            state_next_values,_,_= self.critic_next(old_states_next,old_states_img_next,self.h_state_cv_c,self.h_state_n_c) 
+            state_values,self.h_state_cv_c,self.h_state_n_c= self.critic(old_states, old_states_img,self.h_state_cv_c,self.h_state_n_c)
             if done == 1:
                     state_next_values = state_next_values*0
             advantages = rewards.detach() + self.gamma *state_next_values.detach() - state_values   #TD use
@@ -218,7 +224,7 @@ class PPO:
                 # ratio (ppi_theta/i_theta__old):
                 # Surrogate Loss: # TD:r(s) + v(s+1) - v(s)  # MC = R-V（s）
                                 
-                action,logprobs,entropy = self.actor(old_states,old_states_img) 
+                action,logprobs,entropy ,_,_= self.actor(old_states,old_states_img,self.h_state_cv_a,self.h_state_n_a) 
                 ratios = torch.exp(logprobs - old_logprobs.detach() ) #log转正数probability
 
                 surr1 = ratios * advantages.detach()
@@ -232,7 +238,12 @@ class PPO:
             c_loss.backward()
             self.C_optimizer.step()
             self.critic_next.load_state_dict(self.critic.state_dict())
-
+        if self.reset == 1:
+            self.h_state_cv_c=(torch.zeros(1,1,85).to(device),torch.zeros(1,1,85).to(device))
+            self.h_state_cv_a =self.h_state_cv_c
+            self.h_state_n_c = (torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+            self.h_state_n_a = self.h_state_n_c
+            self.reset = 0
         # Copy new weights into old policy: 更新时旧网络计算只会用到 logP,旧图没意义
         return advantages.pow(2) #advantages.sum().abs()/100 # MC use
 
@@ -308,7 +319,7 @@ def main():
             else:
                 del memory.states_next[:1]
                 del memory.states_img_next[:1]
-                memory.states.append(state)
+                memory.states_next.append(state)
                 memory.states_img_next.append(tensor_cv)
             loss_ = ppo.update(memory,lr,advantages,done)
             loss.append(loss_)
