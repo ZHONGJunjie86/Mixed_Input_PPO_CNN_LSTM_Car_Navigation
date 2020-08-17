@@ -287,7 +287,7 @@ global {
 		    	  if(distance_front_car_before <= safe_interval or time_after_waite>0){  //前面有车 
 		        	  reward <- 0.0;
 		          }  
-			     else{reward <- -0.001 ;}
+			     else{reward <- -0.0032 ;}
 			}
 			//超速
 		   else{ 
@@ -295,7 +295,7 @@ global {
 			    else{reward <- 0.001 - 0.0008*(Instantaneous_speed/target_speed);}  ////+ (time_pass > time_target ? -0.0001 : 0.00005); //36 sigmiod*/
 			    reward <-0.001 - 0.006*((Instantaneous_speed-target_speed)/target_speed);
 		    }
-		    reward <- reward - punishment + (collision = 1 ? 0 : done*0.01) - (time_pass <= time_target ? 0 : done*0.008);  //
+		    reward <- reward - punishment + (collision = 1 ? 0 : done*0.01) - (time_pass <= time_target ? 0 : done*0.008) - (time_pass>=150?0.1:0);  //
 	    }//初期
 	   else{reward<-0.0;}
 	}
@@ -450,7 +450,7 @@ global {
                     }
                     //agent 在前面，判断堵车
                     else{
-                    	if((Euclidean_distance+real_real_speed) <= bus_decided.real_speed){jam<-1;write "同一条路上,同向,右行,Jam! "+Euclidean_distance+" "+distance_behind_car;}
+                    	if((Euclidean_distance+real_real_speed) <= bus_decided.real_speed+1){jam<-1;write "同一条路上,同向,右行,Jam! "+Euclidean_distance+" "+distance_behind_car;}
                     }
                  }
                  //不同路，同一个目标,下一个目标也一样
@@ -479,7 +479,7 @@ global {
                 	    point next_2_point_bus_closest <- bus_decided.targets at next_2_point_index_bus_decided;
                 	    int self_target_before_index <- targets index_of current_target - 1; 
                         if(current_target = next_2_point_bus_closest and bus_decided.current_target = targets at self_target_before_index){
-                    	    if((Euclidean_distance+real_real_speed) <= bus_decided.real_speed){jam<-1;write "不同路，同向,右行，Jam! "+Euclidean_distance+" "+distance_behind_car;}
+                    	    if((Euclidean_distance+real_real_speed) <= bus_decided.real_speed+1){jam<-1;write "不同路，同向,右行，Jam! "+Euclidean_distance+" "+distance_behind_car;}
                         }
                 	}
                 	if(remain_self > 1 and remain_bus_decided = 1 and bus_decided.current_target != bus_decided.targets at 0){
@@ -507,7 +507,7 @@ global {
                         //agent 在前面，判断堵车
                         if(current_target = next_2_point_bus_closest and current_target != targets at 0){
                         	int self_target_before_index <- targets index_of current_target - 1;
-                    	    if((Euclidean_distance+real_real_speed) <= bus_decided.real_speed and bus_decided.current_target = targets at self_target_before_index){
+                    	    if((Euclidean_distance+real_real_speed) <= (bus_decided.real_speed+1) and bus_decided.current_target = targets at self_target_before_index){
                     	    	jam<-1;write ">>1不同路，同向,右行,Jam! "+Euclidean_distance+" "+distance_behind_car;
                     	    	 //write "不同路，同向,右行"+current_road + bus_decided.current_road + next_point_self + next_point_bus_closest;
                     	    }  //NPC_spped  bus_decided.real_speed
@@ -536,7 +536,7 @@ global {
 	}	
 	
 	//目的地（終着バスターミナル）についた時の処理  && 最初の時   location distance_to final_target
-	reflex time_to_restart when:(distance_left) = 0 or first_time = 1 or collision = 1 {  //a_flag_checked_by_light = 0 and checked = false
+	reflex time_to_restart when:(distance_left) = 0 or first_time = 1 or collision = 1 or time_pass>=150{  //a_flag_checked_by_light = 0 and checked = false
 	     if(first_time != 1){
              done <- 1;
           	 do Python;
