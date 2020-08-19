@@ -4,8 +4,8 @@ A car-agent navigates in complex traffic conditions by Mixed_Input_PPO_CNN_LSTM 
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/old/img_generante.JPG)
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/image%20inverse%20generation.gif)
 # Partially Observable Markov Games
-In this work, I consider a agent extension of Markov decision processes(MDPs) called partially observable Markov games.
-Every cycle the agent will obtain an observation which makes the agent become the image's center.
+In this work, I consider a agent extension of Markov decision processes(MDPs) called partially observable Markov games.   
+Every cycle the agent will obtain an observation which makes the agent become the image's center.   
 And the inverse generated images are extracted by features of which the agent should be careful. For example, the front cars and behind cars.
 # Mixed input architecture
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/achitecture_new.png)
@@ -49,10 +49,10 @@ The network's output are accelerations which are constricted between [-6,6]m/s^2
 * rt = r terminal + r danger + r speed  
 * r terminal： -0.013(target_speed > real_speed) or  -0.1(target_speed < real_speed)：crash / time expires   
 * r speed： related to the target speed  
-* if sa ≤st:0.001 - 0.004*((target_speed-Instantaneous_speed)/target_speed);
-　　if distance_front_car_before <= safe_interval or time_after_safe_interval>0:0.001*(Instantaneous_speed/target_speed);
-　　Time_after_safe_interval can be extented when the front cars within safe_interval.
-* if sa > st: 0.001 - 0.006*((Instantaneous_speed-target_speed)/target_speed);
+* if sa ≤st:0.001 - 0.004*((target_speed-Instantaneous_speed)/target_speed);     
+　　if distance_front_car_before <= safe_interval or time_after_safe_interval>0:0.001*(Instantaneous_speed/target_speed);     
+　　Time_after_safe_interval can be extented when the front cars within safe_interval.     
+* if sa > st: 0.001 - 0.006*((Instantaneous_speed-target_speed)/target_speed);     
 
 　In my experiment it's obviously I desire the agent to learn controling its speed around the target-speed.   
 # Result
