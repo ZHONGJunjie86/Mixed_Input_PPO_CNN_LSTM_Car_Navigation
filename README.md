@@ -53,6 +53,12 @@ The network's output are accelerations which are constricted between [-6,6]m/s^2
 * if sa > st: 0.001 - 0.033*(real_speed / target_speed ) 
 
 　In my experiment it's obviously I desire the agent to learn controling its speed around the target-speed.   
+# Result
+　It's obvoiusly that the LSTM can be trained much better than models without LSTM. 
+## Actor-Ctitic 2 LSTM
+ ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/Actor_Critic_2loss_curve(1).png)
+## Actor-Ctitic 0 LSTM
+![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/Actor_Critic_0loss_curve.png)
 # PPO2
 <a href="https://www.codecogs.com/eqnedit.php?latex=J^{\theta&space;'}(\theta&space;)&space;=&space;\sum&space;min(\frac{p_{\theta'&space;}}{p_{\theta&space;}}*A_{\theta&space;}(s_{t&space;},a_{t&space;})),clip(\frac{p_{\theta'&space;}}{p_{\theta&space;}},1-\varepsilon&space;,1&plus;\varepsilon)*A_{\theta&space;}(s_{t&space;},a_{t&space;}))" target="_blank"><img src="https://latex.codecogs.com/gif.latex?J^{\theta&space;'}(\theta&space;)&space;=&space;\sum&space;min(\frac{p_{\theta'&space;}}{p_{\theta&space;}}*A_{\theta&space;}(s_{t&space;},a_{t&space;})),clip(\frac{p_{\theta'&space;}}{p_{\theta&space;}},1-\varepsilon&space;,1&plus;\varepsilon)*A_{\theta&space;}(s_{t&space;},a_{t&space;}))" title="J^{\theta&space;'}(\theta&space;)&space;=&space;\sum&space;min(\frac{p_{\theta'&space;}}{p_{\theta&space;}}*A_{\theta&space;}(s_{t&space;},a_{t&space;})),clip(\frac{p_{\theta'&space;}}{p_{\theta&space;}},1-\varepsilon&space;,1&plus;\varepsilon)*A_{\theta&space;}(s_{t&space;},a_{t&space;}))" /></a>
 ### TD
