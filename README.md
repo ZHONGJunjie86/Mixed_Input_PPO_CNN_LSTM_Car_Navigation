@@ -15,7 +15,8 @@ And the inverse generated images are extracted by features of which the agent sh
   It's notable that the data elements have some relation rather than random distribute.   
   The　target_speed is a constant value while the  elapsed_time_ratio and distance_to_goal are monotonically increasing or monotonically decreasing data.  
   So we can consider to use LSTM, a kind of Recurrent Neural Network(RNN), can find temporal relationship between datas.  
-  To comfirm this, I input [t-2,t] three datas in a bunch once time. Also applies to images.
+  To comfirm this, I input [t-2,t] three datas in a bunch once time. Also applies to images.    
+  And the LSTM layers will use (h_t-1, c_t-1) hidden sate for time t.
 # Traffic conditions && Collision Detection
 When a car-agent navigates on the road, it may encounter with other cars.   
 In some conditions, the acceleration chosen by car-agent will cause jam or collision.  
