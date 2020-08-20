@@ -10,10 +10,10 @@ And the inverse generated images are extracted by features of which the agent sh
 # Mixed input architecture
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/achitecture_new.png)
  # Sequential data && LSTM
-　Input [real_speed/10, target_speed/10, elapsed_time_ratio,reward,done,time_pass,over]  
-　Station representation: [real_speed/10, target_speed/10, elapsed_time_ratio,]  
- 　It's notable that the data elements have some relation rather than random distribute.   
- 　The　target_speed is a constant value while the  elapsed_time_ratio and distance_to_goal are monotonically increasing or monotonically decreasing data.  
+  Input [real_speed/10, target_speed/10, elapsed_time_ratio,reward,done,time_pass,over]  
+  Station representation: [real_speed/10, target_speed/10, elapsed_time_ratio,]  
+  It's notable that the data elements have some relation rather than random distribute.   
+  The　target_speed is a constant value while the  elapsed_time_ratio and distance_to_goal are monotonically increasing or monotonically decreasing data.  
   So we can consider to use LSTM, a kind of Recurrent Neural Network(RNN), can find temporal relationship between datas.  
   To comfirm this, I input [t-2,t] three datas in a bunch once time. Also applies to images.
 # Traffic conditions && Collision Detection
