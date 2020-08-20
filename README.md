@@ -9,6 +9,13 @@ Every cycle the agent will obtain an observation which makes the agent become th
 And the inverse generated images are extracted by features of which the agent should be careful. For example, the front cars and behind cars.
 # Mixed input architecture
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/achitecture_new.png)
+ # Sequential data && LSTM
+　Input [real_speed/10, target_speed/10, elapsed_time_ratio,reward,done,time_pass,over]  
+　Station representation: [real_speed/10, target_speed/10, elapsed_time_ratio,]  
+ 　It's notable that the data elements have some relation rather than random distribute.   
+ 　The　target_speed is a constant value while the  elapsed_time_ratio and distance_to_goal are monotonically increasing or monotonically decreasing data.  
+  So we can consider to use LSTM, a kind of Recurrent Neural Network(RNN), can find temporal relationship between datas.  
+  To comfirm this, I input [t-2,t] three datas in a bunch once time. Also applies to images.
 # Traffic conditions && Collision Detection
 When a car-agent navigates on the road, it may encounter with other cars.   
 In some conditions, the acceleration chosen by car-agent will cause jam or collision.  
@@ -55,6 +62,7 @@ The network's output are accelerations which are constricted between [-6,6]m/s^2
 * if sa > st: 0.001 - 0.006*((Instantaneous_speed-target_speed)/target_speed);     
 
 　In my experiment it's obviously I desire the agent to learn controling its speed around the target-speed.   
+
 # Result
 　It's obvoiusly that the LSTM can be trained much better than models without LSTM. 
 ## Actor-Ctitic 2 LSTM
