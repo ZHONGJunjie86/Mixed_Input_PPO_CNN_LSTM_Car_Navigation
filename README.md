@@ -4,7 +4,7 @@ A car-agent navigates in complex traffic conditions by Mixed_Input_PPO_CNN_LSTM 
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/old/img_generante.JPG)
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/image%20inverse%20generation.gif)
 # Partially Observable Markov Games
-In this work, I consider a agent extension of Markov decision processes(MDPs) called partially observable Markov games.   
+In this work, I consider an agent extension of Markov decision processes(MDPs) called partially observable Markov games.   
 Every cycle the agent will obtain an observation which makes the agent become the image's center.   
 And the inverse generated images are extracted by features of which the agent should be careful. For example, the front cars and behind cars.
 # Mixed input architecture
