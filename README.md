@@ -1,7 +1,7 @@
 # Mixed_Input_PPO_CNN_LSTM_Car_Navigation
 A car-agent navigates in complex traffic conditions by Mixed_Input_PPO_CNN_LSTM model.  
 # Accepted by AROB 2021
-I will upload my paper later.
+Find my paper [Generation of Traffic Flows in Multi-Agent Traffic Simulation with Agent Behavior Model based on Deep Reinforcement Learning](https://arxiv.org/abs/2101.03230).
 # Feature extraction and image inverse generation
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/old/img_generante.JPG)
 ![image](https://github.com/ZHONGJunjie86/Mixed_Input_PPO_CNN_LSTM_Car_Navigation/blob/master/result/image%20inverse%20generation.gif)
