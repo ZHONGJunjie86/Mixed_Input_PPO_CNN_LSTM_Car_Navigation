@@ -9,6 +9,7 @@ from torch.distributions import MultivariateNormal
 import numpy as np
 import pandas as pd
 import warnings
+import math
 
 warnings.filterwarnings("ignore")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #
@@ -42,53 +43,53 @@ class Actor(nn.Module):
         self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
-        self.linear_CNN = nn.Linear(13456, 256)   # *3
-        self.lstm_CNN = nn.LSTM(768,256)
+        self.linear_CNN_1 = nn.Linear(13456, 256)
+        self.linear_CNN_2 = nn.Linear(768,256)
         
         #
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 128)
-        self.linear2 = nn.Linear(128,128)
-        self.lstm3 = nn.LSTM(128,85)
+        self.linear2 = nn.Linear(128, 85)
         
-        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
+        self.linear3 = nn.Linear(511,128)
         self.linear4 = nn.Linear(128,32)
         self.mu = nn.Linear(32,self.action_size)  #256 linear2
         self.sigma = nn.Linear(32,self.action_size)
         self.hidden_cell = (torch.zeros(1,1,64).to(device),
                             torch.zeros(1,1,64).to(device))
+        self.distribution = torch.distributions.Normal
 
     def forward(self, state,tensor_cv):
         # CV
-        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
-        x = F.relu(self.maxp2(self.conv2(x)))
+        x = F.relu(self.maxp1( self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2( self.conv2(x)))
         x = x.view(x.size(0), -1) #展開
-        x = F.relu(self.linear_CNN(x)).reshape(1,768)
-        x,_ = self.lstm_CNN(x.unsqueeze(0))
-        x = F.relu( x).reshape(1,256)  #torch.tanh
-        
+        x = F.relu(self.linear_CNN_1(x)).reshape(1,768)
+        x = F.relu(self.linear_CNN_2(x)).reshape(1,256)
         # num
         output_1 = F.relu(self.linear1(state))
-        output_2 = F.relu(self.linear2(output_1))
-        output_2,_ = self.lstm3(output_2)
-        output_2 = F.relu(output_2)  #
-        output_2 = output_2.squeeze().reshape(1,255)
-        # LSTM
+        output_2 = F.relu(self.linear2(output_1)).reshape(1,255)
+        # merge
         output_2 = torch.cat((x,output_2),1) 
-        output_2  = output_2.unsqueeze(0)
-        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
-        a,b,c = output_3.shape
+        output_3 = F.relu(self.linear3(output_2) )
         #
-        output_4 = F.relu(self.linear4(output_3.view(-1,c))) #
+        output_4 =F.relu(self.linear4(output_3)) #F.relu(self.linear4(output_3.view(-1,c))) #
         mu = torch.tanh(self.mu(output_4))   #有正有负 sigmoid 0-1
         sigma = F.relu(self.sigma(output_4)) + 0.001 
         mu = torch.diag_embed(mu).to(device)
         sigma = torch.diag_embed(sigma).to(device)  # change to 2D
-        dist = MultivariateNormal(mu,sigma)  #N(μ，σ^2)
-        entropy = dist.entropy().mean()
+
+        #dist = MultivariateNormal(mu,sigma)
+        dist = self.distribution(mu, sigma)#MultivariateNormal(mu,sigma)  #N(μ，σ^2)
         action = dist.sample()
         action_logprob = dist.log_prob(action)     
+        action = torch.clamp(action.detach(), -0.8, 0.6)
+
+        #entropy = torch.sum(dist.entropy())
+        #entropy = dist.entropy().mean() #torch.sum(m_probs.entropy())
+        entropy = 0.5 + 0.5 * math.log(2 * math.pi) + torch.log(dist.scale)
+
         return action,action_logprob,entropy
 
 class Critic(nn.Module):
@@ -99,43 +100,44 @@ class Critic(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
         self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
         self.linear_CNN = nn.Linear(13456, 256)
-        self.lstm_CNN = nn.LSTM(768,256)
+        self.lstm_CNN = nn.LSTM(256,85, 1,batch_first=True) #768,255
         #
         self.state_size = state_size
         self.action_size = action_size
         self.linear1 = nn.Linear(self.state_size, 128)
         self.linear2 = nn.Linear(128, 128)
-        self.lstm3 = nn.LSTM(128,85)
+        self.lstm3 = nn.LSTM(128,85,1, batch_first=True)
         #
-        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
+        self.LSTM_layer_3 = nn.LSTM(510,128,1, batch_first=True)  
         self.linear4 = nn.Linear(128,32) #
         self.linear5 = nn.Linear(32, action_size)
-        self.hidden_cell = (torch.zeros(1,1,64).to(device),
-                            torch.zeros(1,1,64).to(device))
 
-    def forward(self, state, tensor_cv):
-        #CV
-        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
-        x = F.relu(self.maxp2(self.conv2(x)))
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.linear_CNN(x)).reshape(1,768)
-        x,_ = self.lstm_CNN(x.unsqueeze(0))
-        x = F.relu( x).reshape(1,256)
-        #num
+    def forward(self, state, tensor_cv,h_state_cv_c=(torch.zeros(1,3,85).to(device),
+                            torch.zeros(1,3,85).to(device)),h_state_n_c=(torch.zeros(1,3,85).to(device),
+                            torch.zeros(1,3,85).to(device)),h_state_3_c=(torch.zeros(1,1,128).to(device),
+                            torch.zeros(1,1,128).to(device))):
+        # CV
+        x = F.relu(self.maxp1( self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2( self.conv2(x))).reshape(3,1,13456)
+        #x = x.view(x.size(0), -1) #展開
+        x = F.relu(self.linear_CNN(x))#.reshape(1,768)
+        x,h_state_cv_c = self.lstm_CNN(x ,h_state_cv_c)  # #.unsqueeze(0)
+        x = F.relu( x).reshape(1,255)  #torch.tanh
+        # num
         output_1 = F.relu(self.linear1(state))
         output_2 = F.relu(self.linear2(output_1))
-        output_2,_ = self.lstm3(output_2)
-        output_2 = F.relu(output_2)
+        output_2,h_state_n_c = self.lstm3(output_2,h_state_n_c)   #
+        output_2 = F.relu(output_2)  #
         output_2 = output_2.squeeze().reshape(1,255)
-        #LSTM
-        output_2 = torch.cat((x,output_2),1)
+        # LSTM
+        output_2 = torch.cat((x,output_2),1) 
         output_2  = output_2.unsqueeze(0)
-        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
+        output_3 , h_state_3_c= self.LSTM_layer_3(output_2,h_state_3_c )   #    #,self.hidden_cell
         a,b,c = output_3.shape
         #
         output_4 = F.relu(self.linear4(output_3.view(-1,c))) 
         value  = torch.tanh(self.linear5(output_4))
-        return value #,output
+        return value ,(h_state_cv_c[0].data,h_state_cv_c[1].data),(h_state_n_c[0].data,h_state_n_c[1].data),(h_state_3_c[0].data,h_state_3_c[1].data)
 
 class PPO:
     def __init__(self, state_dim, action_dim, lr,gamma, K_epochs, eps_clip):
@@ -146,6 +148,7 @@ class PPO:
         self.memory_size = 3
         self.memory_counter = 0
         
+        
         self.actor = Actor(state_dim, action_dim).to(device)
         self.critic = Critic(state_dim, action_dim).to(device)
         self.critic_next = Critic(state_dim, action_dim).to(device)
@@ -154,6 +157,9 @@ class PPO:
         self.C_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr, betas=(0.95, 0.999)) #更新新网
 
         self.MseLoss = nn.MSELoss()
+        self.h_state_cv_c=(torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+        self.h_state_n_c=(torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+        self.h_state_3_c=(torch.zeros(1,1,128).to(device),torch.zeros(1,1,128).to(device))
     
     def select_action(self, state, tensor_cv,memory):
         if  len(memory.states)==0:
@@ -201,13 +207,22 @@ class PPO:
         
         with torch.autograd.set_detect_anomaly(True):
             # Evaluating old actions and values :
-            state_values= self.critic(old_states, old_states_img).squeeze()
-            state_next_values= self.critic_next(old_states_next,old_states_img_next) .squeeze()
+            state_values,self.h_state_cv_c,self.h_state_n_c,self.h_state_3_c= \
+                          self.critic(old_states, old_states_img,self.h_state_cv_c,self.h_state_n_c,self.h_state_3_c)#.squeeze() #value
+            state_next_values,_,_,_ = \
+                          self.critic_next(old_states_next,old_states_img_next,self.h_state_cv_c,self.h_state_n_c,self.h_state_3_c) #.squeeze()
             if done == 1:
                     state_next_values = state_next_values*0
+                    self.h_state_cv_c=(torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+                    self.h_state_n_c=(torch.zeros(1,3,85).to(device),torch.zeros(1,3,85).to(device))
+                    self.h_state_3_c=(torch.zeros(1,1,128).to(device),torch.zeros(1,1,128).to(device))
+    
             advantages = rewards.detach() + self.gamma *state_next_values.detach() - state_values   #TD use
+
             #advantages = rewards  - state_values  #MC use
+            #c_loss = F.smooth_l1_loss(rewards.detach() + self.gamma *state_next_values.detach(), state_values)
             c_loss = (rewards.detach() + self.gamma *state_next_values.detach() - state_values).pow(2) 
+
             for _ in range(self.K_epochs):
                 # ratio (ppi_theta/i_theta__old):
                 # Surrogate Loss: # TD:r(s) + v(s+1) - v(s)  # MC = R-V（s）
@@ -234,11 +249,12 @@ def main():
     
     ############## Hyperparameters ##############
     update_timestep = 1     #TD use == 1 # update policy every n timesteps  set for TD
-    K_epochs = 4           # update policy for K epochs  lr太大会出现NAN?
+    K_epochs = 2        # update policy for K epochs  lr太大会出现NAN?
     eps_clip = 0.2            
     gamma = 0.9           
     
-    episode =0
+    episode = 0
+    training_stage = 65
 
     sample_lr = [
         0.0001, 0.00009, 0.00008, 0.00007, 0.00006, 0.00005, 0.00004, 0.00003,
@@ -246,14 +262,17 @@ def main():
         0.000004, 0.000003, 0.000002, 0.000001
     ]
     lr = 0.0001   #random_seed = None
-    state_dim = 6
+    state_dim = 3
     action_dim = 1 
     #(self, state_dim, action_dim, lr, betas, gamma, K_epochs, eps_clip)
-    actor_path = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_actor.pkl'
-    critic_path = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_critic.pkl'
+    actor_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_actor.pkl'
+    critic_path = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/weight/ppo_TD3lstm_critic.pkl'
     ################ load ###################
-    if episode >50  : #50 100
-        lr = sample_lr[int(episode// 50)]
+    if episode >training_stage : #50 100
+        try:
+            lr = sample_lr[int(episode //training_stage)]
+        except(IndexError):
+            lr = 0.000001#0.000001*(0.99 ** ((episode-1000) // 10))
 
     ppo =  PPO(state_dim, action_dim, lr, gamma, K_epochs, eps_clip)
     if os.path.exists(actor_path):
@@ -265,9 +284,11 @@ def main():
     print("Waiting for GAMA...")
 
     ################### initialization ########################
-    save_curve_pic = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/result/PPO_3LSTM_loss_curve.png'
-    save_critic_loss = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3lstm_critic_loss.csv'
-    save_reward = os.getcwd()+'/GAMA_python/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3lstm_reward.csv'
+    save_curve_pic = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/result/PPO_3LSTM_loss_curve.png'
+    save_critic_loss = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_critic_loss.csv'
+    save_reward = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/training_data/PPO_TD3_reward.csv'
+    save_speed = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/training_data/AC_average_speed.csv'
+    save_NPC_speed = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/training_data/NPC_speed.csv'
     reset()
     memory = Memory()
 
@@ -276,8 +297,9 @@ def main():
     total_loss = []
     rewards = []
     total_rewards = []
+    average_speed = []
     test = "GAMA"
-    state,reward,done,time_pass,over = GAMA_connect(test) #connect
+    state,reward,done,time_pass,over ,average_speed_NPC = GAMA_connect(test) #connect
     #[real_speed/10, target_speed/10, elapsed_time_ratio, distance_left/100,distance_front_car/10,distance_behind_car/10,reward,done,over]
     print("done:",done,"timepass:",time_pass)
     ##################  start  #########################
@@ -285,10 +307,12 @@ def main():
         #普通の場合
         if(done == 0 and time_pass != 0):  
             #print("state ",state)
+            #print("reward",reward)
+            average_speed.append(state[0])
             rewards.append(reward)
             memory.rewards.append(reward)
             memory.is_terminals.append(done)
-            state = torch.DoubleTensor(state).reshape(1,6).to(device) 
+            state = torch.DoubleTensor(state).reshape(1,state_dim).to(device) 
             state_img = generate_img() 
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device)
             if  len(memory.states_next) ==0:
@@ -300,7 +324,7 @@ def main():
             else:
                 del memory.states_next[:1]
                 del memory.states_img_next[:1]
-                memory.states.append(state)
+                memory.states_next.append(state)
                 memory.states_img_next.append(tensor_cv)
             loss_ = ppo.update(memory,lr,advantages,done)
             loss.append(loss_)
@@ -315,6 +339,7 @@ def main():
 
         # 終わり 
         elif done == 1:
+            average_speed.append(state[0])
             #先传后计算
             print("state_last",state)
             send_to_GAMA( [[1,0]] ) 
@@ -322,7 +347,7 @@ def main():
 
             del memory.states_next[:1]
             del memory.states_img_next[:1]
-            state = torch.DoubleTensor(state).reshape(1,6).to(device) #转化成1行
+            state = torch.DoubleTensor(state).reshape(1,state_dim).to(device) #转化成1行
             memory.states_next.append(state)
             state_img = generate_img() 
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device)
@@ -341,28 +366,125 @@ def main():
             total_loss.append(loss_sum)
             total_reward = sum(rewards)
             total_rewards.append(total_reward)
-            cross_loss_curve(loss_sum.squeeze(0),total_reward,save_curve_pic,save_critic_loss,save_reward)
+            cross_loss_curve(loss_sum.squeeze(0),total_reward,save_curve_pic,save_critic_loss,save_reward,np.mean(average_speed)*10,save_speed,average_speed_NPC,save_NPC_speed)
             rewards = []
             loss = []
-            if episode >50  : #50 100
-                lr = sample_lr[int(episode// 50)]
+            if episode >training_stage  : #50 100
+                try:
+                    lr = sample_lr[int(episode //training_stage)]
+                except(IndexError):
+                    lr = 0.000003#0.000001*(0.99 ** ((episode-1000) // 10))
             torch.save(ppo.actor.state_dict(),actor_path)
             torch.save(ppo.critic.state_dict(),critic_path)
 
         #最初の時
         else:
-            print('Iteration:',episode)
-            state = torch.DoubleTensor(state).reshape(1,6).to(device) 
+            print('Iteration:',episode,"lr",lr)
+            state = torch.DoubleTensor(state).reshape(1,state_dim).to(device) 
             state_img = generate_img() # numpy image: H x W x C (500, 500, 3) -> (3,500,500)
             tensor_cv = torch.from_numpy(np.transpose(state_img, (2, 0, 1))).double().to(device) # np.transpose( xxx,  (2, 0, 1)) torch image: C x H x W
             action = ppo.select_action(state, tensor_cv,memory)
             print("acceleration: ",action) 
             send_to_GAMA([[1,float(action*10)]])
 
-        state,reward,done,time_pass,over = GAMA_connect(test)
+        state,reward,done,time_pass,over ,average_speed_NPC= GAMA_connect(test)
 
     return None 
 
 if __name__ == '__main__':
     main()
  
+
+"""  self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128,128)
+        self.lstm3 = nn.LSTM(128,85)
+        
+        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
+        self.linear4 = nn.Linear(128,32)
+        self.mu = nn.Linear(32,self.action_size)  #256 linear2
+        self.sigma = nn.Linear(32,self.action_size)
+        self.hidden_cell = (torch.zeros(1,1,64).to(device),
+                            torch.zeros(1,1,64).to(device))
+
+    def forward(self, state,tensor_cv):
+        # CV
+        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = x.view(x.size(0), -1) #展開
+        x = F.relu(self.linear_CNN(x)).reshape(1,768)
+        x,_ = self.lstm_CNN(x.unsqueeze(0))
+        x = F.relu( x).reshape(1,256)  #torch.tanh
+        
+        # num
+        output_1 = F.relu(self.linear1(state))
+        output_2 = F.relu(self.linear2(output_1))
+        output_2,_ = self.lstm3(output_2)
+        output_2 = F.relu(output_2)  #
+        output_2 = output_2.squeeze().reshape(1,255)
+        # LSTM
+        output_2 = torch.cat((x,output_2),1) 
+        output_2  = output_2.unsqueeze(0)
+        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
+        a,b,c = output_3.shape
+        #
+        output_4 = F.relu(self.linear4(output_3.view(-1,c))) #
+        mu = torch.tanh(self.mu(output_4))   #有正有负 sigmoid 0-1
+        sigma = F.relu(self.sigma(output_4)) + 0.001 
+        mu = torch.diag_embed(mu).to(device)
+        sigma = torch.diag_embed(sigma).to(device)  # change to 2D
+        dist = MultivariateNormal(mu,sigma)  #N(μ，σ^2)
+        entropy = dist.entropy().mean()
+        action = dist.sample()
+        action_logprob = dist.log_prob(action)     
+        return action,action_logprob,entropy
+        
+        class Critic(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(Critic, self).__init__()
+        self.conv1 = nn.Conv2d(3,8, kernel_size=8, stride=4, padding=0) # 500*500*3 -> 124*124*8
+        self.maxp1 = nn.MaxPool2d(4, stride = 2, padding=0) # 124*124*8 -> 61*61*8
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=4, stride=1, padding=0) # 61*61*8 -> 58*58*16 
+        self.maxp2 = nn.MaxPool2d(2, stride=2, padding=0) # 58*58*16  -> 29*29*16 = 13456
+        self.linear_CNN = nn.Linear(13456, 256)
+        self.lstm_CNN = nn.LSTM(768,256)
+        #
+        self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 128)
+        self.lstm3 = nn.LSTM(128,85)
+        #
+        self.LSTM_layer_3 = nn.LSTM(511,128,1, batch_first=True)
+        self.linear4 = nn.Linear(128,32) #
+        self.linear5 = nn.Linear(32, action_size)
+        self.hidden_cell = (torch.zeros(1,1,64).to(device),
+                            torch.zeros(1,1,64).to(device))
+
+    def forward(self, state, tensor_cv):
+        #CV
+        x = F.relu(self.maxp1(self.conv1(tensor_cv)))
+        x = F.relu(self.maxp2(self.conv2(x)))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.linear_CNN(x)).reshape(1,768)
+        x,_ = self.lstm_CNN(x.unsqueeze(0))
+        x = F.relu( x).reshape(1,256)
+        #num
+        output_1 = F.relu(self.linear1(state))
+        output_2 = F.relu(self.linear2(output_1))
+        output_2,_ = self.lstm3(output_2)
+        output_2 = F.relu(output_2)
+        output_2 = output_2.squeeze().reshape(1,255)
+        #LSTM
+        output_2 = torch.cat((x,output_2),1)
+        output_2  = output_2.unsqueeze(0)
+        output_3 , self.hidden_cell = self.LSTM_layer_3(output_2) #,self.hidden_cell
+        a,b,c = output_3.shape
+        #
+        output_4 = F.relu(self.linear4(output_3.view(-1,c))) 
+        value  = torch.tanh(self.linear5(output_4))
+        return value #,output
+        
+        
+        """
