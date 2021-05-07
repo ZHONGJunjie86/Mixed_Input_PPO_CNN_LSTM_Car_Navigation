@@ -86,23 +86,33 @@ def generate_img():
                 else:
                         count = 0
                 count += 1
-            plt.figure(figsize=(5, 5)) #500*500
+            plt.figure(figsize=(1.65,1.65)) #500*500 (5, 5)
             plt.axis('off') 
             plt.xlim(float(SELF[0][1:])-100,float(SELF[0][1:])+100)
             plt.ylim(float(SELF[1])-100, float(SELF[1])+100)
-            plt.scatter(Route_X[0],Route_Y[0],color = 'g',marker = 'h') #start
-            plt.scatter(Route_X[len(Route_X)-1],Route_Y[len(Route_Y)-1],color = 'purple',marker = 'h') #end
-            plt.plot(Route_X,Route_Y,color = 'grey')   #route
-            plt.scatter(NPC_behind_X, NPC_behind_Y,color = 'b',marker = 'o') #NPC_behind
-            plt.scatter(NPC_front_X, NPC_front_Y,color = 'c',marker = '>') #NPC_front
-            plt.scatter(NPC_closest_10_X, NPC_closest_10_Y,color = 'm',marker = 'P') #NPC_10
-            plt.scatter(float(SELF[0][1:]), float(SELF[1]),color = 'r',marker= 'D')
+            plt.scatter(Route_X[0],Route_Y[0],color = 'g',marker = 'h',s=5) #start
+            plt.scatter(Route_X[len(Route_X)-1],Route_Y[len(Route_Y)-1],color = 'purple',marker = 'h',s=1) #end
+            plt.plot(Route_X,Route_Y,color = 'grey',alpha=0.3)   #route
+            plt.scatter(NPC_behind_X, NPC_behind_Y,color = 'b',marker = 'o',s=0.6) #NPC_behind
+            plt.scatter(NPC_front_X, NPC_front_Y,color = 'c',marker = '>',s=0.6) #NPC_front
+            plt.scatter(NPC_closest_10_X, NPC_closest_10_Y,color = 'm',marker = 'P',s=0.6) #NPC_10
+            plt.scatter(float(SELF[0][1:]), float(SELF[1]),color = 'r',marker= 'D',s=0.6)
             error = False
         except(IndexError,FileNotFoundError,ValueError,OSError,PermissionError):
             error = True
     
-    plt.savefig(save_img, dpi=100)
+    buffer =io.BytesIO()
+    plt.savefig( buffer,dpi=100) #save_img
+    buffer.seek(0) 
+    img = np.asarray(bytearray(buffer.read()), dtype=np.uint8)
+    img_cv = cv2.imdecode(img,1)  #0-grey
+    #cv2.imwrite(save_img,img_cv)
+    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+    plt.close()
+    buffer.close()
+
+    """plt.savefig(save_img, dpi=100)
     plt.close()
     img_cv = cv2.imread(save_img)   # cv2.imread()------np.array, (H x W xC), [0, 255], BGR
-    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)"""
     return img_cv

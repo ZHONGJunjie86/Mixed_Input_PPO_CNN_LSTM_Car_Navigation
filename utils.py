@@ -21,21 +21,37 @@ def reset():
     np.savetxt(from_python_1,return_,delimiter=',')
     np.savetxt(from_python_2,return_,delimiter=',')
 
-def cross_loss_curve(critic_loss,total_rewards,save_curve_pic,save_critic_loss,save_reward):
+def cross_loss_curve(critic_loss,total_rewards,save_curve_pic,save_critic_loss,save_reward,average_speed,save_speed,average_speed_NPC,save_NPC_speed):
     critic_loss = np.hstack((np.loadtxt(save_critic_loss, delimiter=","),critic_loss))
     reward = np.hstack((np.loadtxt(save_reward, delimiter=",") ,total_rewards))
-    plt.plot(np.array(critic_loss), c='b', label='critic_loss',linewidth=0.5)
-    plt.plot(np.array(reward), c='r', label='total_rewards',linewidth=0.5)
+    average_speeds = np.hstack((np.loadtxt(save_speed, delimiter=",") ,average_speed))
+    NPC_speeds = np.hstack((np.loadtxt(save_NPC_speed, delimiter=",") ,average_speed_NPC))
+    plt.plot(np.array(critic_loss), c='b', label='critic_loss', linewidth=0.2)
+    plt.plot(np.array(reward), c='r', label='total_rewards', linewidth=0.2)
     plt.legend(loc='best')
     #plt.ylim(-15,15)
-    plt.ylim(-0.25,0.1)
+    plt.ylim(-0.25,0.05)
     plt.ylabel('critic_loss') 
-    plt.xlabel('training steps')
+    plt.xlabel('Training Episode')
     plt.grid()
     plt.savefig(save_curve_pic)
     plt.close()
+    #
+    plt.plot(np.array(average_speeds), c='g', label='RL agent avg speed ',linewidth=0.2)
+    plt.plot(np.array(NPC_speeds), c='b', label='50 Rule-based agents avg speed',linewidth=0.2)
+    plt.legend(loc='best')
+    plt.ylabel('Average_speed m/s') 
+    plt.xlabel('Training Episode')
+    #plt.title(label)
+    #plt.ylim(0,42)
+    plt.grid()
+    plt.savefig(save_curve_pic_speed)
+    plt.close()
+    #
     np.savetxt(save_critic_loss,critic_loss,delimiter=',')
     np.savetxt(save_reward,reward,delimiter=',')
+    np.savetxt(save_speed,average_speeds,delimiter=',')
+    np.savetxt(save_NPC_speed,NPC_speeds,delimiter=',')
 
 def send_to_GAMA(to_GAMA):
     error = True
@@ -66,8 +82,11 @@ def GAMA_connect(test):
     reward = state[6]
     done = state[7]  # time_pass = state[6]
     over = state [8] 
+    average_speed_NPC =state[9]
     #print("Recived:",state," done:",done)
-    state = np.delete(state, [6,7,8], axis = 0) #4,5,
+    state = np.delete(state, [2,3,5,6,7,8,9], axis = 0) #4,5,  # 3!!!!
+    state = np.array([state[0], state[0], state[0], state[1],state[1],state[1] ,state[2],state[2], state[2] ])
+
     error = True
     while error == True:
         try:
@@ -80,4 +99,4 @@ def GAMA_connect(test):
             time.sleep(0.003)
             error = True
 
-    return state,reward,done,time_pass,over,
+    return state,reward,done,time_pass,over,average_speed_NPC
