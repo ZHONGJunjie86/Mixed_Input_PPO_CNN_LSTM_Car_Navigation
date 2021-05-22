@@ -3,10 +3,12 @@ import numpy as np
 import time,random
 import os 
 
-from_GAMA_1 = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\GAMA_R\\GAMA_intersection_data_1.csv'
-from_GAMA_2 = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\GAMA_R\\GAMA_intersection_data_2.csv'
-from_python_1 = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\GAMA_R\\python_AC_1.csv'
-from_python_2 = os.getcwd()+'\\GAMA_python\\PPO_Mixedinput_Navigation_Model\\GAMA_R\\python_AC_2.csv'
+from_GAMA_1 = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/GAMA_R/GAMA_intersection_data_1.csv'
+from_GAMA_2 = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/GAMA_R/GAMA_intersection_data_2.csv'
+from_python_1 = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/GAMA_R/python_AC_1.csv'
+from_python_2 = os.getcwd()+'/PPO_Mixedinput_Navigation_Model/GAMA_R/python_AC_2.csv'
+save_curve_pic_speed = save_curve_pic = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/result/Actor_Critic_3_average_speed.png'
+#save_curve_pic_speed = save_curve_pic = os.path.abspath(os.curdir)+'/PPO_Mixedinput_Navigation_Model/result/PPO_3_average_speed.png'
 
 def reset():
     f=open(from_GAMA_1, "r+")
