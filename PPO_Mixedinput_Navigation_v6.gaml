@@ -21,6 +21,7 @@ global {
 	int episode <- 0;
 	int total_episode <- 10000;
 	int done;  //終わり-1
+	int start_LOCK<--1;
 
 	node_agt starting_point; //agent species
 	
@@ -149,6 +150,23 @@ global {
 			max_acceleration <- 0.5 + rnd(500) / 1000;
 			speed_coeff <- 1.2 - (rnd(400) / 1000);
 		}
+		create bus number: nb_bus_npc {   //NPC
+			time_target<- 12+ rnd(13);
+			max_speed <- 16°m/°s;
+			speed_coeff <- 1.0;
+			//real_speed <- 0 °m/°s;
+			speed <- 16 °m/°s;
+			vehicle_length <- 3.0 #m;
+			location <- t1;
+			time_pass <- 0;
+			proba_use_linked_road <- 0.0; 
+			max_acceleration <- 6.0 ;
+			min_safety_distance <- 0.0;
+			min_security_distance <- 0.0;
+			safety_distance_coeff <- -1.0;
+			security_distance_coeff <- -1.0;
+			//proba_use_linked_road <- 0.99;
+		}	
 		create bus_agent number: nb_bus_agent {   //Agent
 			time_target<- 12+ rnd(13);
 			max_speed <- 330°m/°s;
@@ -169,23 +187,6 @@ global {
 	        //proba_use_linked_road <- 0.99;   //使用相反道路
 	        //right_side_driving <- false; //for collision
 		}	
-		create bus number: nb_bus_npc {   //NPC
-			time_target<- 12+ rnd(13);
-			max_speed <- 16°m/°s;
-			speed_coeff <- 1.0;
-			//real_speed <- 0 °m/°s;
-			speed <- 16 °m/°s;
-			vehicle_length <- 3.0 #m;
-			location <- t1;
-			time_pass <- 0;
-			proba_use_linked_road <- 0.0; 
-			max_acceleration <- 6.0 ;
-			min_safety_distance <- 0.0;
-			min_security_distance <- 0.0;
-			safety_distance_coeff <- -1.0;
-			security_distance_coeff <- -1.0;
-			//proba_use_linked_road <- 0.99;
-		}	
 			
 	}
     reflex stop_simulation when: episode = total_episode {
@@ -193,6 +194,167 @@ global {
     } 
 	
 } 
+
+
+
+//NPC
+  species bus skills: [advanced_driving] { 
+	  rgb color <- rnd_color(255);
+	  bool green_light_checked <-false;
+  	  node_agt target; 
+	  node_agt true_target;
+	  node_agt bus_start;
+	  int n <-1;
+	  int m <- rnd(n);//乱数でバスのルートを決定
+	  int over<-0;
+      // 自作
+      int time_target;
+      int time_pass;
+	  int first_time <- 1;
+      int check_receive <- 0;
+      int random_node;
+	  int a_flag_checked_pass_light <- nil;
+      float target_speed;   
+	  float elapsed_time_ratio;
+	  float distance_all;
+	  float accumulated_speed <- 0.0;
+	  float average_speed <- 12.0;
+	  float distance_passed <-0.0;
+	  float distance_left <-0.0;
+	  point pre_point;
+	  point birth_point;
+	
+	action road_weight{
+		if(m=0){
+			 road_network <- road_network with_weights kagayaki_route;//重みを地図に適応		
+			 current_path <- compute_path(graph: road_network,target: target);
+		 }
+		 if(m=1){
+		   road_network <- road_network with_weights kasayama_route;//重みを地図に適応
+		   current_path <- compute_path(graph: road_network,target: target);
+		 } 
+		 int length_nodes <- length(targets);
+		 int sum_nodes <- 0;
+		 loop while: (sum_nodes+1 < length_nodes) {
+		     distance_all <- distance_all + (targets at sum_nodes)distance_to(targets at (sum_nodes+1));
+		     sum_nodes <- sum_nodes+1;
+		 }
+		 distance_left <- distance_all;
+		 distance_left<-max (distance_left,distance_to_goal);
+		 if(distance_left>100){
+		     time_target <- int((distance_left/100)*8)- rnd(3);  //key   distance_left/16*10 +15+ rnd(3);//+ rnd(3)
+		 }
+		 else{
+		 	time_target <- int((distance_left/100)*8)+ 2;
+		 }
+		 
+	}
+   action distance_cal{
+		distance_passed<- distance_passed + (location distance_to pre_point);
+		pre_point <- location;
+		distance_left <- distance_all - distance_passed;
+		distance_left<-max (distance_left,distance_to_goal);
+	}
+	reflex over_detection when :cycle>=0{
+		if(real_speed>=distance_left){over<-1;}//*1.5
+	}
+	
+	reflex change when :current_path = nil{		
+		a_flag_checked_pass_light <- nil;
+		location <- any_location_in(node_agt(5));
+		final_target<- any_location_in(node_agt(12));
+	}
+	//信号に引っかかった後の処理  等红灯。。。
+	reflex time_to_go when: a_flag_checked_pass_light != 0 and green_light_checked = true {
+		if(true_target != nil){
+			target <- true_target;
+			true_target <- nil;
+		}
+	}	
+	
+	//目的地（終着バスターミナル）についた時の処理  && 最初の時   location distance_to final_target
+	reflex time_to_restart when:(distance_left)<=1 or first_time = 1 or time_pass > 50 or over=1{  //a_flag_checked_by_light = 0 and checked = false
+	     if(first_time != 1){
+             done <- 1;
+             do distance_cal;
+		     //episode <- episode + 1 ; //加到1000，算完最后结果
+		     average_speed <-accumulated_speed/time_pass;//average_speed <- 0.0;
+         }
+         else{
+         	first_time <- 0;
+         }
+         
+        
+         random_node <- int(rnd(12)); //rnd(
+         int f_p <- int(rnd(12)); //出生点
+         loop while: random_node = f_p or f_p = 5 or f_p = 4 or f_p = 1 or f_p = 9 or f_p=start_LOCK{f_p <- int(rnd(12));random_node <- int(rnd(12));}
+         target<- node_agt(random_node);
+         true_target <- node_agt(random_node);
+		 final_target <- node_agt(random_node).location;	
+		 a_flag_checked_pass_light <- 1;
+		 location <- node_agt(f_p); //any_location_in()
+		 birth_point<-location;
+		 pre_point<-any_location_in(node_agt(f_p)); 
+		 distance_passed <- 0.0;distance_all<- 0.0;over<-0;
+		 
+		 accumulated_speed <-0.0;real_speed <- 0.0;time_pass <- 0;
+		 
+		 
+		 do road_weight;
+       speed<- min(distance_left/time_target,16);
+       max_speed<- min(distance_left/time_target,16);
+       
+	} 
+	
+	reflex move when: current_path != nil or a_flag_checked_pass_light != 0 {//道が決まり、目的地が決まれば動く  
+	    if (episode<total_episode and done = 0 ){
+	    	  accumulated_speed <-accumulated_speed + real_speed;
+           //if(time_pass!=0){average_speed <-accumulated_speed/time_pass;}
+	        do distance_cal;
+           //real_speed <- NPC_speed;
+           //speed<- target_speed;
+         }
+        if(episode<total_episode and done = 1){
+        	  accumulated_speed <-accumulated_speed + real_speed;
+           //if(time_pass!=0){average_speed <-accumulated_speed/time_pass;}
+           do distance_cal;
+           done<-0;
+           //real_speed <- NPC_speed;
+           //speed<- target_speed;
+         }
+		 do drive;
+	    time_pass <- time_pass + 1;
+	}
+	aspect car3D {
+		if (current_road) != nil {
+			point loc <- calcul_loc();
+			draw box(vehicle_length, 1,1) at: loc rotate:  heading color: color;
+			draw triangle(0.5) depth: 1.5 at: loc rotate:  heading + 90 color: color;	
+		}
+	}
+	
+	aspect icon {
+		point loc <- calcul_loc();
+			if(m =0){
+			draw bus_shape_kagayaki size: vehicle_length   at: loc rotate: heading + 90 ;
+			}
+			if(m = 1)
+				{
+			draw bus_shape_kasayama size: vehicle_length   at: loc rotate: heading + 90 ;	
+					}
+		}
+	
+	point calcul_loc {
+		float val <- (road(current_road).lanes - current_lane) + 0.5;
+		val <- on_linked_road ? val * - 1 : val;
+		if (val = 0) {
+			return location; 
+		} else {
+			return (location + {cos(heading + 90) * val, sin(heading + 90) * val});
+		}
+	}
+
+}
 
 //RL-agent
   species bus_agent skills: [advanced_driving,RSkill] { 
@@ -215,7 +377,7 @@ global {
 	  int collision<-0;   //衝突
 	  int jam <-0;  //渋滞生成
 	  int time_after_waite <-0;
-	  int time_buffer<-3;
+	  int time_buffer<-3; //3
 	  unknown read_python;
 	  unknown pause;
 	  unknown clear;
@@ -233,7 +395,7 @@ global {
 	  float distance_behind_car_before <-100.0;
 	  float Instantaneous_speed<-0.0;
 	  float real_real_speed<-0.0;
-	  float safe_interval <- 50.0;
+	  float safe_interval <- 40.0; //50
 	  float NPC_average_speed<-0.0;
 	  point pre_point;
 	  file Rcode_pause<-text_file("/home/cdl/gama_workspace/GAMA_python/PPO_Mixedinput_Navigation_Model/GAMA_R/R_pause.txt"); //file Rcode_clear<-text_file("D:/Software/GamaWorkspace/Python/R_clear.txt");
@@ -297,7 +459,7 @@ global {
 		   else if(Instantaneous_speed >=target_speed){ 
 		        /*if(distance_behind_car_before < 20){reward <-0.001 - 0.03*((Instantaneous_speed-target_speed)/target_speed);} //后面有车  0.03
 			    else{reward <- 0.001 - 0.0008*(Instantaneous_speed/target_speed);}  ////+ (time_pass > time_target ? -0.0001 : 0.00005); //36 sigmiod*/
-			    reward <- 0.001 - 0.014*((Instantaneous_speed-target_speed)/target_speed); //0.004!  0.006
+			    reward <- 0.001 - 0.015*((Instantaneous_speed-target_speed)/target_speed); //0.004!  0.006
 		    }                          //0.014 good//0.013 bad//0.004
 		    reward <- reward - punishment;//+ (collision = 1 ? 0 : done*0.01)- (time_pass <= time_target ? 0 : done*0.008) - (time_pass>=150?0.1:0) - (time_pass>=150?0.1:0);  //
 	    }//初期
@@ -581,6 +743,7 @@ global {
          loop while: random_node_end = random_node_start 
                or random_node_start = 5 or random_node_start = 4 or random_node_start = 1 or random_node_start = 9
                {random_node_end <- int(rnd(12));random_node_start <- int(rnd(12)); }
+         start_LOCK<-random_node_start;
          target<- node_agt(random_node_end);true_target <- node_agt(random_node_end);final_target <- node_agt(random_node_end).location;
 		   location <- any_location_in(node_agt(random_node_start)); pre_point<-any_location_in(node_agt(random_node_start)); 	
 		   
@@ -588,7 +751,9 @@ global {
 		   
 		   distance_passed <- 0.0;distance_all<- 0.0;reward<-0.0;collision<-0;jam<-0;Instantaneous_speed<-0.0; time_after_waite<-4;
 		   do road_weight;
-         target_speed<- min(distance_left/time_target,16);//9 + rnd(3)°m/°s;
+		   target_speed<- max(distance_left/time_target,9);//10
+         target_speed<- min(target_speed,15);//15//9 + rnd(3)°m/°s;
+         //target_speed<-12.5;
          //target_speed<- NPC_speed;
          write "target_time "+ time_target+"target_speed "+target_speed+" distance_left "+distance_left;
          route<-[];loop i over: targets{route<-route+any_location_in(node_agt(i));}
@@ -619,6 +784,7 @@ global {
            real_speed <- real_real_speed;
            }
 		 do drive;
+		 if time_pass >=3{start_LOCK<--1;}
 	    time_pass <- time_pass + 1;
 	    //write "targets: "+targets; //不变
 	    //write "current_target: "+current_target; //变动
@@ -654,164 +820,7 @@ global {
 
 }
 
-//NPC
-  species bus skills: [advanced_driving] { 
-	  rgb color <- rnd_color(255);
-	  bool green_light_checked <-false;
-  	  node_agt target; 
-	  node_agt true_target;
-	  node_agt bus_start;
-	  int n <-1;
-	  int m <- rnd(n);//乱数でバスのルートを決定
-	  int over<-0;
-      // 自作
-      int time_target;
-      int time_pass;
-	  int first_time <- 1;
-      int check_receive <- 0;
-      int random_node;
-	  int a_flag_checked_pass_light <- nil;
-      float target_speed;   
-	  float elapsed_time_ratio;
-	  float distance_all;
-	  float accumulated_speed <- 0.0;
-	  float average_speed <- 12.0;
-	  float distance_passed <-0.0;
-	  float distance_left <-0.0;
-	  point pre_point;
-	  point birth_point;
-	
-	action road_weight{
-		if(m=0){
-			 road_network <- road_network with_weights kagayaki_route;//重みを地図に適応		
-			 current_path <- compute_path(graph: road_network,target: target);
-		 }
-		 if(m=1){
-		   road_network <- road_network with_weights kasayama_route;//重みを地図に適応
-		   current_path <- compute_path(graph: road_network,target: target);
-		 } 
-		 int length_nodes <- length(targets);
-		 int sum_nodes <- 0;
-		 loop while: (sum_nodes+1 < length_nodes) {
-		     distance_all <- distance_all + (targets at sum_nodes)distance_to(targets at (sum_nodes+1));
-		     sum_nodes <- sum_nodes+1;
-		 }
-		 distance_left <- distance_all;
-		 distance_left<-max (distance_left,distance_to_goal);
-		 if(distance_left>100){
-		     time_target <- int((distance_left/100)*8)- rnd(3);  //key   distance_left/16*10 +15+ rnd(3);//+ rnd(3)
-		 }
-		 else{
-		 	time_target <- int((distance_left/100)*8)+ 2;
-		 }
-		 
-	}
-   action distance_cal{
-		distance_passed<- distance_passed + (location distance_to pre_point);
-		pre_point <- location;
-		distance_left <- distance_all - distance_passed;
-		distance_left<-max (distance_left,distance_to_goal);
-	}
-	reflex over_detection when :cycle>=0{
-		if(real_speed>=distance_left){over<-1;}//*1.5
-	}
-	
-	reflex change when :current_path = nil{		
-		a_flag_checked_pass_light <- nil;
-		location <- any_location_in(node_agt(5));
-		final_target<- any_location_in(node_agt(12));
-	}
-	//信号に引っかかった後の処理  等红灯。。。
-	reflex time_to_go when: a_flag_checked_pass_light != 0 and green_light_checked = true {
-		if(true_target != nil){
-			target <- true_target;
-			true_target <- nil;
-		}
-	}	
-	
-	//目的地（終着バスターミナル）についた時の処理  && 最初の時   location distance_to final_target
-	reflex time_to_restart when:(distance_left)<=1 or first_time = 1 or time_pass > 50 or over=1{  //a_flag_checked_by_light = 0 and checked = false
-	     if(first_time != 1){
-             done <- 1;
-             do distance_cal;
-		     //episode <- episode + 1 ; //加到1000，算完最后结果
-		     average_speed <-accumulated_speed/time_pass;//average_speed <- 0.0;
-         }
-         else{
-         	first_time <- 0;
-         }
-         
-        
-         random_node <- int(rnd(12)); //rnd(
-         int f_p <- int(rnd(12)); //出生点
-         loop while: random_node = f_p or f_p = 5 or f_p = 4 or f_p = 1 or f_p = 9{f_p <- int(rnd(12));random_node <- int(rnd(12));}
-         target<- node_agt(random_node);
-         true_target <- node_agt(random_node);
-		 final_target <- node_agt(random_node).location;	
-		 a_flag_checked_pass_light <- 1;
-		 location <- node_agt(f_p); //any_location_in()
-		 birth_point<-location;
-		 pre_point<-any_location_in(node_agt(f_p)); 
-		 distance_passed <- 0.0;distance_all<- 0.0;over<-0;
-		 
-		 accumulated_speed <-0.0;real_speed <- 0.0;time_pass <- 0;
-		 
-		 
-		 do road_weight;
-       speed<- min(distance_left/time_target,16);
-       max_speed<- min(distance_left/time_target,16);
-       
-	} 
-	
-	reflex move when: current_path != nil or a_flag_checked_pass_light != 0 {//道が決まり、目的地が決まれば動く  
-	    if (episode<total_episode and done = 0 ){
-	    	  accumulated_speed <-accumulated_speed + real_speed;
-           //if(time_pass!=0){average_speed <-accumulated_speed/time_pass;}
-	        do distance_cal;
-           //real_speed <- NPC_speed;
-           //speed<- target_speed;
-         }
-        if(episode<total_episode and done = 1){
-        	  accumulated_speed <-accumulated_speed + real_speed;
-           //if(time_pass!=0){average_speed <-accumulated_speed/time_pass;}
-           do distance_cal;
-           done<-0;
-           //real_speed <- NPC_speed;
-           //speed<- target_speed;
-         }
-		 do drive;
-	    time_pass <- time_pass + 1;
-	}
-	aspect car3D {
-		if (current_road) != nil {
-			point loc <- calcul_loc();
-			draw box(vehicle_length, 1,1) at: loc rotate:  heading color: color;
-			draw triangle(0.5) depth: 1.5 at: loc rotate:  heading + 90 color: color;	
-		}
-	}
-	
-	aspect icon {
-		point loc <- calcul_loc();
-			if(m =0){
-			draw bus_shape_kagayaki size: vehicle_length   at: loc rotate: heading + 90 ;
-			}
-			if(m = 1)
-				{
-			draw bus_shape_kasayama size: vehicle_length   at: loc rotate: heading + 90 ;	
-					}
-		}
-	
-	point calcul_loc {
-		float val <- (road(current_road).lanes - current_lane) + 0.5;
-		val <- on_linked_road ? val * - 1 : val;
-		if (val = 0) {
-			return location; 
-		} else {
-			return (location + {cos(heading + 90) * val, sin(heading + 90) * val});
-		}
-	}
 
-}
 species node_agt skills: [skill_road_node] {
 	bool is_traffic_signal;
 	string type;
@@ -1133,3 +1142,5 @@ experiment traffic_simulation type: gui {
 		}
 	}
 }
+
+
